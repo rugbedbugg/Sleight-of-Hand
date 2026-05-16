@@ -1,0 +1,10 @@
+{
+  "params": {
+    "value_bet_threshold": 0.4287436560225202,
+    "call_threshold": 0.26143514198366585,
+    "bluff_freq": 0.07228201818357938,
+    "aggression": 1.0,
+    "steepness": 14.31218091909652
+  },
+  "fitness_mbb_per_hand": 510.8333333333333
+}

@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sleight-of-hand"
+version = "0.1.0"
+description = "A heads-up Leduc hold'em agent built on Bayesian opponent modeling, expectiminimax search, and genetic-algorithm strategy tuning."
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "matplotlib>=3.7"]
+
+[tool.setuptools.packages.find]
+include = ["sleight_of_hand*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
