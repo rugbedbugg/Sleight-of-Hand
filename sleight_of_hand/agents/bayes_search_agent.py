@@ -23,6 +23,12 @@ class BayesSearchAgent(Agent):
     from observed actions (keeping only the deck-combinatorics prior/public
     card conditioning), which is the "search without an opponent model"
     ablation.
+
+    `search_mode` selects the game-tree rule at opponent nodes:
+    `"expectiminimax"` (best-respond to the policy model, the default) or
+    `"minimax"` (paranoid worst-case). The minimax variant still uses the
+    same Bayesian belief over the hidden card; it only changes how the
+    opponent's *actions* are combined inside the tree.
     """
 
     name = "bayes_search"
@@ -33,10 +39,12 @@ class BayesSearchAgent(Agent):
         use_bayes: bool = True,
         rng: random.Random | None = None,
         name: str | None = None,
+        search_mode: str = "expectiminimax",
     ):
         self.assumed_opponent_params = assumed_opponent_params
         self.use_bayes = use_bayes
         self.rng = rng or random.Random()
+        self.search_mode = search_mode
         if name:
             self.name = name
         self.last_belief = None
@@ -45,7 +53,13 @@ class BayesSearchAgent(Agent):
     def act(self, state: GameState, legal_actions: list[ActionType]) -> ActionType:
         my_player = state.to_act
         model = infer_belief(state, my_player, params=self.assumed_opponent_params, use_actions=self.use_bayes)
-        action, values = choose_action(state, my_player, model.belief, opponent_params=self.assumed_opponent_params)
+        action, values = choose_action(
+            state,
+            my_player,
+            model.belief,
+            opponent_params=self.assumed_opponent_params,
+            mode=self.search_mode,
+        )
         self.last_belief = model.belief
         self.last_action_values = values
         return action

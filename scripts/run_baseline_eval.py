@@ -34,6 +34,9 @@ def build_agent_factories(ga_genome: PolicyParams | None):
         "always_call": lambda: AlwaysCallAgent(),
         "rule_based": lambda: RuleBasedAgent(rng=random.Random()),
         "bayes_search": lambda: BayesSearchAgent(rng=random.Random()),
+        "bayes_minimax": lambda: BayesSearchAgent(
+            rng=random.Random(), name="bayes_minimax", search_mode="minimax"
+        ),
     }
     if ga_genome is not None:
         factories["ga_tuned"] = lambda: RuleBasedAgent(params=ga_genome, rng=random.Random(), name="ga_tuned")
