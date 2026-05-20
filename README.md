@@ -3,38 +3,7 @@
 **Calling the Bluff: An AI That Learns to Play Poker Without the Tells**
 
 A heads-up Leduc hold'em agent built on Bayesian opponent modeling,
-expectiminimax game-tree search, and genetic-algorithm strategy tuning. No
-cameras, no tells — the agent decides using only the cards it holds and
-the bets it observes.
-
-## Why Leduc hold'em?
-
-Heads-up Leduc hold'em is the recognized research benchmark for
-imperfect-information decision-making — small enough to implement and
-analyze rigorously from scratch, deep enough that value-betting,
-bluffing, and folding all matter. Full multiplayer No-Limit Hold'em is a
-CFR-scale (Counterfactual Regret Minimization) problem, outside the
-classical-AI toolkit this project draws from. Two deliberate scoping
-decisions keep Leduc tractable while staying honest about what's being
-solved:
-
-1. **Two players** — exactly one hidden hand to reason about.
-2. **Limit betting, fixed raise cap** — a bounded, fully-enumerable betting
-   tree (no depth-limiting or heuristic search truncation is needed
-   anywhere in this codebase; every search is exhaustive).
-
-### Rules implemented (exactly)
-
-- Deck: `{J, J, Q, Q, K, K}`.
-- Each player antes 1 chip, is dealt 1 private card.
-- Round 1: bet size 2, at most 2 raises.
-- One public card is revealed.
-- Round 2: bet size 4, at most 2 raises.
-- Showdown: a private card matching the public card's rank (a pair) wins;
-  otherwise the higher private card wins; equal ranks split the pot.
-- Player 0 acts first in both betting rounds (Leduc has no dealer button
-  beyond the ante; this is the standard simplification also used by e.g.
-  OpenSpiel's Leduc implementation).
+expectiminimax game-tree search, and genetic-algorithm strategy tuning.
 
 ## Architecture
 
