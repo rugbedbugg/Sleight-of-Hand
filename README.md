@@ -8,39 +8,49 @@ expectiminimax game-tree search, and genetic-algorithm strategy tuning.
 ## Architecture
 
 ```
-                    Leduc Engine (sleight_of_hand/engine)
-                 state, legal actions, betting, showdown, payoffs
-                                   |
-        +--------------------------+--------------------------+
-        |                          |                          |
-  Bayesian opponent          Expectiminimax              GA strategy
-  model (bayes/)     -----> search (search/) <-----      tuner (ga/)
-  P(card | history)   belief   over betting tree   params    evolves policy/heuristic.py's
-                                                              PolicyParams genome
+engine/     immutable GameState; legal actions, betting, showdown, payoffs
+   |
+   +-- bayes/    P(opp card | history), Bayes' rule
+   +-- search/   expectiminimax over the betting tree
+   +-- ga/       evolves PolicyParams
+        `-------> policy/heuristic.py :: action_probs()
 ```
 
-The three techniques share one load-bearing object:
-`policy/heuristic.py`'s `action_probs(card, public, legal, to_call, params)`
-— a smooth, parametrized model of "how does a player with this hand act
-in this spot?" It plays four roles at once:
+All three techniques consume one function:
+`policy/heuristic.py::action_probs(card, public, legal, to_call, params)`,
+a sigmoid model of `P(action | hand, context)` over five real-valued
+parameters (`value_bet_threshold`, `call_threshold`, `bluff_freq`,
+`aggression`, `steepness`).
 
-- As the **rule-based baseline agent**, with hand-tuned params.
-- As the **likelihood term** `P(action | card, context)` in the Bayesian
-  opponent model's Bayes'-rule update.
-- As the **opponent-response model at opponent nodes** inside
-  expectiminimax search.
-- As the **genome** the genetic algorithm evolves — its five parameters
-  (`value_bet_threshold`, `call_threshold`, `bluff_freq`, `aggression`,
-  `steepness`) are exactly what it tunes.
+| Role | Consumer |
+|---|---|
+| Rule-based baseline policy | `agents/baselines.py::RuleBasedAgent` |
+| Likelihood `P(action \| card)` in the Bayes update | `bayes/opponent_model.py` |
+| Opponent-response model at opponent nodes | `search/expectiminimax.py` |
+| Genome (5 genes, bounded in `ga/genome.py`) | `ga/evolve.py` |
 
-## Techniques and where they live
+Changing the parameters changes the baseline, the belief update, the
+search's opponent model, and the GA phenotype at once.
 
-| Technique | Component | Where |
-|---|---|---|
-| Environment model | Leduc as a partially-observable, stochastic, two-agent environment | `engine/` (state/action/reward design) |
-| Game-tree search | Expectiminimax over the betting tree: MAX nodes (our decisions), chance nodes (community card), opponent nodes (belief- and policy-weighted expectation), plus a worst-case `minimax` variant | `search/expectiminimax.py` |
-| Evolutionary search | Genetic algorithm evolving bet/call/fold thresholds, bluff frequency, and aggression | `ga/` |
-| Bayesian inference | `P(opponent card \| betting history)` maintained via Bayes' rule; updated on every action and on the community-card reveal | `bayes/opponent_model.py` |
+### Search
+
+`search/expectiminimax.py`, three node types:
+
+* **MAX**: our decision. `max` over legal actions.
+* **chance**: community card. Deck-weighted expectation.
+* **opponent**: expectation under `action_probs`, not `min`.
+
+The opponent's hidden card is fixed as a hypothesis and marginalized over
+the Bayesian belief at the root. The betting tree is enumerated
+exhaustively (no depth limit), which Leduc's size permits.
+
+### Belief
+
+`bayes/opponent_model.py::infer_belief` replays `state.history` from
+scratch each decision, reading only `state.private[my_player]`. Prior is
+deck combinatorics after removing our own card; updates are the action
+likelihood from `action_probs`, plus a hypergeometric update on the
+community reveal.
 
 ## Repository layout
 
@@ -93,33 +103,48 @@ python scripts/run_exploitability.py                            # -> results/exp
 
 ## Evaluation
 
-- **Win-rate (mbb/hand).** Leduc has no literal blind, so — following the
-  usual poker-AI convention of pegging the unit to a fixed bet size — one
-  "big blind" is defined as the round-1 bet (2 chips). `eval/harness.py`
-  plays large round-robin matches with seats alternated each hand to
-  cancel positional variance, and reports mean ± 95% CI in mbb/hand.
-- **Belief accuracy.** `eval/belief_accuracy.py` tracks
-  `P(opponent's true card)` under the Bayesian model at every observation
-  within a hand, averaged over thousands of hands — the belief-convergence
-  plot.
-- **GA fitness curve.** Best/mean/worst population fitness per generation,
-  fitness = mean mbb/hand against a *fixed* baseline pool (kept fixed
-  across generations, plus a small coevolutionary term against the
-  previous generation's champion, so the curve is a meaningful,
-  comparable trend rather than a moving target).
-- **Ablation.** The same `BayesSearchAgent`, once updating belief from
-  observed opponent actions and once restricted to the deck-combinatoric
-  prior only — isolating what the Bayesian layer is worth, in mbb/hand.
-- **Exploitability (optional, advanced).** Because Leduc's game tree is
-  small enough to search exhaustively, `eval/exploitability.py` computes
-  an exact best response to any fixed strategy (by setting the search
-  agent's assumed opponent parameters *and* Bayesian likelihood model to
-  match that strategy precisely) and Monte-Carlo estimates its
-  best-response value — a genuine, tractable measure of how exploitable a
-  given strategy is. See that module's docstring for exactly what is and
-  isn't claimed (single-sided best response to a stationary strategy, not
-  full two-sided Nash-equilibrium exploitability).
+Win rates in **mbb/hand** (milli-big-blinds per hand). Leduc antes rather
+than blinds, so `BIG_BLIND` is pegged to the round-1 bet size (2 chips):
+`mbb = 1000 * chips_won_per_hand / 2`.
 
+| Experiment | Script | Output |
+|---|---|---|
+| Round-robin win rate | `run_baseline_eval.py` | `win_rate_matrix.{csv,png}` |
+| Belief convergence | `plot_belief_convergence.py` | `belief_convergence.png` |
+| GA fitness | `run_ga.py` | `ga_fitness_curve.png`, `ga_best_genome.json` |
+| Bayes ablation | `ablation.py` | `ablation.png` |
+| Exploitability | `run_exploitability.py` | `exploitability.png` |
+
+**Win rate.** `eval/harness.py::play_match` alternates seat 0 every hand to
+cancel positional asymmetry and returns per-hand mean and standard error.
+`MatchResult.__str__` renders a normal-approximation 95% interval
+(1.96 SE). `round_robin` plays each unordered pair once and mirrors.
+
+**Belief convergence.** `eval/belief_accuracy.py` records
+`P(opponent's true card)` after every observation (each opponent action,
+plus the community reveal), averaged across hands. Both seats play the
+same `RULE_BASED_PARAMS`, so the likelihood is exactly matched to the
+generative process: this measures calibration under a correctly specified
+model, not robustness to model mismatch.
+
+**GA fitness.** Fitness is mean mbb/hand over `n_hands_per_opponent`
+against a fixed pool (`random`, `always_call`, `rule_based`), blended
+`0.75 / 0.25` with a match against the previous generation's champion
+(`GAConfig.coevolve_frac`). The pool is held fixed across generations so
+the curve is a comparable trend. Best/mean/worst reported per generation.
+
+**Ablation.** One `BayesSearchAgent`, `use_bayes=True` vs `False`. The
+disabled arm keeps the deck-combinatoric prior and the community-card
+conditioning and drops only the action-likelihood updates, isolating the
+value of observing betting behaviour.
+
+**Exploitability.** `eval/exploitability.py` estimates a **lower bound**
+on a fixed strategy `sigma`'s exploitability: a `BayesSearchAgent` with
+both its likelihood model and its opponent model set to `sigma`, scored by
+realized mbb/hand over Monte Carlo hands. Not a true best response: the
+search takes `max` inside each fixed card hypothesis, so future decisions
+are clairvoyant (strategy fusion). Also single-sided, against one
+stationary strategy, not two-sided Nash exploitability
 ## Results
 
 Artifacts are in `results/` (regenerate with `python scripts/run_all_experiments.py`).
