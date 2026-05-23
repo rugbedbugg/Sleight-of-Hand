@@ -46,13 +46,13 @@ in this spot?" It plays four roles at once:
 
 ```
 sleight_of_hand/
-  engine/       rules engine (pure functions over immutable GameState)
-  policy/       the shared parametrized heuristic policy (genome / likelihood / opponent model)
-  bayes/        Bayesian opponent model
-  search/       expectiminimax search
-  agents/       baselines (random, always-call, rule-based) + the full BayesSearchAgent
-  ga/           genetic algorithm (genome, selection, crossover, mutation, elitism)
-  eval/         evaluation harness (mbb/hand), belief-accuracy, ablation, exploitability
+  - engine/       rules engine (pure functions over immutable GameState)
+  - policy/       the shared parametrized heuristic policy (genome / likelihood / opponent model)
+  - bayes/        Bayesian opponent model
+  - search/       expectiminimax search
+  - agents/       baselines (random, always-call, rule-based) + the full BayesSearchAgent
+  - ga/           genetic algorithm (genome, selection, crossover, mutation, elitism)
+  - eval/         evaluation harness (mbb/hand), belief-accuracy, ablation, exploitability
 tests/          unit tests for every component above
 scripts/        experiment runners that produce results/ (plots, tables, best genome)
 demo.py         live demo: agent playing hands with belief state shown per decision
@@ -120,62 +120,6 @@ python scripts/run_exploitability.py                            # -> results/exp
   isn't claimed (single-sided best response to a stationary strategy, not
   full two-sided Nash-equilibrium exploitability).
 
-## Results from this run
+## Results
 
 Artifacts are in `results/` (regenerate with `python scripts/run_all_experiments.py`).
-
-- **Win rate.** Round robin, 4000 hands/pairing, mean mbb/hand vs the rest
-  of the field: `bayes_search +341`, `ga_tuned +150`, `bayes_minimax +95`,
-  `rule_based +55`, `random -316`, `always_call -326`. The full pipeline
-  agent (expectiminimax) is the clear headline result. See
-  `win_rate_matrix.png` / `.csv`.
-- **Belief convergence.** Averaged over 3000 hands, the posterior on the
-  opponent's *true* card rises from **0.36** (prior, close to the ~0.33-0.4
-  uniform baseline) to **0.79** by the last observation in the hand. See
-  `belief_convergence.png`.
-- **Ablation.** Search with Bayesian updates beats the same search using
-  only the deck-combinatoric prior by **+139 mbb/hand** (`+311` vs `+172`
-  against a rule-based opponent) — a direct, quantified measure of what
-  the Bayesian layer is worth. See `ablation.png`.
-- **GA fitness.** Mean population fitness rises from `+51` to a
-  `~+260–310` mbb/hand plateau over 30 generations against the fixed
-  baseline pool; best-of-generation fluctuates noisily around `+400–500`
-  once past the initial climb (elitism preserves the champion, so this
-  noise is opponent-pool variance, not regression). See
-  `ga_fitness_curve.png`.
-- **GA overfits its training pool — a genuine, reportable finding.**
-  `ga_tuned` does well against the exploitable field it was trained on
-  (headline `+150` mbb/hand, second only to `bayes_search`, and it beats
-  plain `rule_based` head-to-head by `+55`). But it is decisively beaten by
-  the best-responding search agent (`bayes_search` earns `+357` mbb/hand
-  off `ga_tuned`), and it is *more* exploitable by an exact best responder
-  (`+379.5` mbb/hand) than either `rule_based` (`+300.2`) or the untuned
-  `default_heuristic` (`+314.1`) — see `exploitability.png`. The evolved
-  genome (`results/ga_best_genome.json`) has low bluff frequency (`0.07`)
-  and maximal aggression (`1.0`): a strategy that presses opponents who
-  fold too little, and is correspondingly transparent/exploitable against
-  one that adapts. This is a textbook premature-convergence-to-training-
-  opponents failure mode, caught empirically rather than theoretically.
-- **Exploitability.** As a sanity check, a deliberately bad strategy
-  (`always_bet_never_fold`) is estimated at **+1160 mbb/hand** exploitable
-  — roughly 3-4x every reasonable strategy tested — confirming the
-  best-response search is discriminating real strategy quality, not just
-  noise.
-
-## Design notes worth knowing before reading the code
-
-- **The engine never hides information.** `GameState.private` holds both
-  players' hole cards; agents are trusted not to peek at the wrong index.
-  `BayesSearchAgent` and `bayes/opponent_model.infer_belief` are careful to
-  only ever read `state.private[my_player]`.
-- **Belief is recomputed from history, not mutated per-hand.** Rather than
-  a stateful model updated via engine hooks, `infer_belief(state,
-  my_player, params)` replays `state.history` from scratch on every call.
-  This makes correctness a property of one small pure function instead of
-  a lifecycle of mutations to keep in sync — and it composes cleanly with
-  search, which explores hypothetical futures the real belief model never
-  actually visits.
-- **Search is exact, not depth-limited.** The full Leduc betting tree
-  (given a fixed hypothesis for the opponent's card) is small enough to
-  enumerate completely, so `search/expectiminimax.py` never truncates or
-  heuristically evaluates a non-terminal node.
