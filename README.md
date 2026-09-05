@@ -80,8 +80,9 @@ pip install -r requirements.txt
 ## Running things
 
 All entry points take `--gamemode` to select the variant. Only `leduc` is
-implemented today; the reserved modes (`deuce27`, `mini27`) are rejected
-with an explanatory message until they land.
+implemented today; `deuce27` and `mini27` are specified in
+[`docs/SPEC.md`](docs/SPEC.md) and rejected with an explanatory message
+until they land.
 
 ```bash
 # unit tests (engine, policy, Bayes model, search, GA, eval) -- ~10s
