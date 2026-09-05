@@ -17,7 +17,7 @@ from sleight_of_hand.agents.bayes_search_agent import BayesSearchAgent
 from sleight_of_hand.bayes.opponent_model import infer_belief
 from sleight_of_hand.engine.actions import ActionType
 from sleight_of_hand.engine.cards import rank_name
-from sleight_of_hand.engine.game import LeducGame
+from sleight_of_hand.cli import add_gamemode_arg, resolve_game
 from sleight_of_hand.policy.heuristic import DEFAULT_PARAMS
 
 SEARCH_SEAT = 0
@@ -36,10 +36,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hands", type=int, default=3)
     parser.add_argument("--seed", type=int, default=1)
+    add_gamemode_arg(parser)
     args = parser.parse_args()
 
+    game = resolve_game(args)
     rng = random.Random(args.seed)
-    search_agent = BayesSearchAgent(rng=random.Random(args.seed + 1))
+    search_agent = BayesSearchAgent(rng=random.Random(args.seed + 1), game=game)
     opponent = RuleBasedAgent(rng=random.Random(args.seed + 2))
     seat_names = {SEARCH_SEAT: "bayes_search (you)", 1 - SEARCH_SEAT: "rule_based (opponent)"}
     agents = [None, None]
@@ -48,16 +50,16 @@ def main():
 
     for hand_no in range(1, args.hands + 1):
         print(f"\n{'#' * 70}\nHand {hand_no}\n{'#' * 70}")
-        state = LeducGame.new_hand(rng)
+        state = game.new_hand(rng)
         print(f"  bayes_search holds {rank_name(state.private[SEARCH_SEAT])}")
 
         while not state.done:
             player = state.to_act
-            legal = LeducGame.legal_actions(state)
+            legal = game.legal_actions(state)
             describe_state(state, seat_names)
 
             if player == SEARCH_SEAT:
-                model = infer_belief(state, SEARCH_SEAT, params=DEFAULT_PARAMS)
+                model = infer_belief(state, SEARCH_SEAT, params=DEFAULT_PARAMS, game=game)
                 print(
                     "    belief over opponent card: "
                     + ", ".join(f"{rank_name(c)}={p:.2f}" for c, p in sorted(model.belief.items()))
@@ -71,11 +73,11 @@ def main():
                 print(f"    -> opponent chooses {ActionType(action).name}")
 
             prev_public = state.public
-            state = LeducGame.apply_action(state, action, rng=rng)
+            state = game.apply_action(state, action, rng=rng)
             if state.public != prev_public and state.public != -1:
                 print(f"  *** community card revealed: {rank_name(state.public)} ***")
 
-        p0, p1 = LeducGame.payoffs(state)
+        p0, p1 = game.payoffs(state)
         payoffs = {SEARCH_SEAT: p0, 1 - SEARCH_SEAT: p1}
         if state.folded != -1:
             print(f"  {seat_names[state.folded]} folded.")

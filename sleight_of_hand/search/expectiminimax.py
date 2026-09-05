@@ -1,9 +1,15 @@
-"""Expectiminimax search over the Leduc betting tree.
+"""Expectiminimax search over a betting tree.
+
+The traversal goes through the `Game` protocol (`engine/protocol.py`), so
+it is variant-neutral: `game=` selects the engine and defaults to the
+registry's default mode. Leduc is enumerated exhaustively because its size
+permits it; 2-7 will supply a depth limit and rollout leaves (see
+`docs/SPEC.md` section 4.7).
 
 The tree has three node kinds:
   * MAX nodes -- our own decision points; pick the action maximizing EV.
-  * chance nodes -- the community-card deal; take the probability-weighted
-    average over remaining deck outcomes.
+  * chance nodes -- Leduc's community-card deal, 2-7's draw replacements;
+    take the probability-weighted average over outcomes.
   * opponent nodes -- the opponent's decision points, combined one of two
     ways selected by the ``mode`` argument:
       - ``"expectiminimax"`` (default): the probability-weighted average
@@ -30,7 +36,8 @@ fixed hypothesis of one -- see `eval/exploitability.py` for that piece).
 from __future__ import annotations
 
 from ..engine.actions import ActionType
-from ..engine.game import LeducGame
+from ..engine.protocol import Game
+from ..engine.registry import get_game
 from ..engine.state import GameState
 from ..policy.heuristic import DEFAULT_PARAMS, PolicyParams, action_probs
 
@@ -40,25 +47,32 @@ def node_value(
     my_player: int,
     opponent_params: PolicyParams = DEFAULT_PARAMS,
     mode: str = "expectiminimax",
+    game: Game | None = None,
 ) -> float:
     """Expected value to `my_player` of `state`, given both hole cards are
     already fixed in `state.private` (a single opponent-card hypothesis).
 
     `mode` selects how opponent nodes are combined: `"expectiminimax"`
     (policy-weighted average, the default) or `"minimax"` (worst-case min).
-    """
-    if state.done:
-        return LeducGame.payoffs(state)[my_player]
 
-    if state.awaiting_community:
+    `game` defaults to the registry's default mode; the traversal itself
+    only touches the `Game` protocol, so it is variant-neutral.
+    """
+    game = game or get_game()
+    if state.done:
+        return game.payoffs(state)[my_player]
+
+    if game.awaiting_chance(state):
         total = 0.0
-        for card, p in LeducGame.possible_community_cards(state, state.private):
-            ns = LeducGame.deal_community(state, card)
-            total += p * node_value(ns, my_player, opponent_params, mode)
+        for outcome, p in game.chance_outcomes(state):
+            ns = game.apply_chance(state, outcome)
+            total += p * node_value(ns, my_player, opponent_params, mode, game)
         return total
 
-    legal = LeducGame.legal_actions(state)
-    children = {a: node_value(LeducGame.apply_action(state, a), my_player, opponent_params, mode) for a in legal}
+    legal = game.legal_actions(state)
+    children = {
+        a: node_value(game.apply_action(state, a), my_player, opponent_params, mode, game) for a in legal
+    }
 
     if state.to_act == my_player:
         return max(children.values())
@@ -85,6 +99,7 @@ def choose_action(
     belief: dict[int, float],
     opponent_params: PolicyParams = DEFAULT_PARAMS,
     mode: str = "expectiminimax",
+    game: Game | None = None,
 ) -> tuple[ActionType, dict[ActionType, float]]:
     """Pick the EV-maximizing action for `my_player`, marginalizing over
     the opponent's possible hidden card weighted by `belief`.
@@ -95,8 +110,9 @@ def choose_action(
     Returns (best_action, {action: expected_value}) so callers (and the
     demo) can show the full decision, not just the choice.
     """
+    game = game or get_game()
     my_card = state.private[my_player]
-    legal = LeducGame.legal_actions(state)
+    legal = game.legal_actions(state)
     action_values: dict[ActionType, float] = {}
     for a in legal:
         total = 0.0
@@ -105,8 +121,8 @@ def choose_action(
                 continue
             private = (my_card, opp_card) if my_player == 0 else (opp_card, my_card)
             hypothesis = state.clone(private=private)
-            ns = LeducGame.apply_action(hypothesis, a)
-            total += p * node_value(ns, my_player, opponent_params, mode)
+            ns = game.apply_action(hypothesis, a)
+            total += p * node_value(ns, my_player, opponent_params, mode, game)
         action_values[a] = total
     best = max(action_values, key=action_values.get)
     return best, action_values

@@ -4,6 +4,8 @@ import random
 
 from ..bayes.opponent_model import infer_belief
 from ..engine.actions import ActionType
+from ..engine.protocol import Game
+from ..engine.registry import get_game
 from ..engine.state import GameState
 from ..policy.heuristic import DEFAULT_PARAMS, PolicyParams
 from ..search.expectiminimax import choose_action
@@ -40,7 +42,9 @@ class BayesSearchAgent(Agent):
         rng: random.Random | None = None,
         name: str | None = None,
         search_mode: str = "expectiminimax",
+        game: Game | None = None,
     ):
+        self.game = game or get_game()
         self.assumed_opponent_params = assumed_opponent_params
         self.use_bayes = use_bayes
         self.rng = rng or random.Random()
@@ -52,13 +56,20 @@ class BayesSearchAgent(Agent):
 
     def act(self, state: GameState, legal_actions: list[ActionType]) -> ActionType:
         my_player = state.to_act
-        model = infer_belief(state, my_player, params=self.assumed_opponent_params, use_actions=self.use_bayes)
+        model = infer_belief(
+            state,
+            my_player,
+            params=self.assumed_opponent_params,
+            use_actions=self.use_bayes,
+            game=self.game,
+        )
         action, values = choose_action(
             state,
             my_player,
             model.belief,
             opponent_params=self.assumed_opponent_params,
             mode=self.search_mode,
+            game=self.game,
         )
         self.last_belief = model.belief
         self.last_action_values = values

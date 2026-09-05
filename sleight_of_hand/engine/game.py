@@ -23,11 +23,33 @@ import random
 
 from .actions import ActionType
 from .cards import full_deck, remaining_counts
-from .state import BET_SIZE, MAX_RAISES, GameState, RoundState
+from .protocol import GameSpec
+from .state import ANTE, BET_SIZE, MAX_RAISES, GameState, RoundState
 
 
 class LeducGame:
+    """Leduc hold'em. Satisfies the `Game` protocol in `protocol.py`.
+
+    Every method is a `staticmethod`, so the engine works both as a class
+    (`LeducGame.legal_actions(s)`, as the existing code calls it) and as
+    the registered instance the protocol-based layers receive
+    (`game.legal_actions(s)`).
+    """
+
     num_players = 2
+
+    spec = GameSpec(
+        name="leduc",
+        num_players=2,
+        num_rounds=2,
+        bet_size=dict(BET_SIZE),
+        max_raises=MAX_RAISES,
+        # Leduc antes rather than blinds; the round-1 bet size is the
+        # conventional mbb/hand denominator (see eval/harness.py).
+        big_blind=BET_SIZE[1],
+        ante=ANTE,
+        has_draws=False,
+    )
 
     # --- dealing -----------------------------------------------------
     @staticmethod
@@ -158,6 +180,32 @@ class LeducGame:
             round_state=RoundState(),
             awaiting_community=False,
         )
+
+    # --- Game protocol: chance nodes -------------------------------------
+    # Leduc's only stochastic transition is the community card. These three
+    # wrappers give it the variant-neutral names the shared search and
+    # evaluation layers use; 2-7 implements the same trio over draw
+    # replacements. See protocol.py.
+    @staticmethod
+    def awaiting_chance(state: GameState) -> bool:
+        return state.awaiting_community
+
+    @staticmethod
+    def chance_outcomes(state: GameState) -> list[tuple[int, float]]:
+        return LeducGame.possible_community_cards(state, state.private)
+
+    @staticmethod
+    def apply_chance(state: GameState, outcome: int) -> GameState:
+        return LeducGame.deal_community(state, outcome)
+
+    @staticmethod
+    def hand_strength(private: int, public: int) -> float:
+        # Imported lazily: policy.heuristic reads engine.actions, and
+        # engine/__init__ imports this module, so a top-level import here
+        # would close a cycle.
+        from ..policy.heuristic import hand_strength as _hand_strength
+
+        return _hand_strength(private, public)
 
     # --- showdown / payoffs ---------------------------------------------
     @staticmethod

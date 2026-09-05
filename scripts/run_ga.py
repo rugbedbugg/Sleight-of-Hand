@@ -14,6 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from sleight_of_hand.cli import add_gamemode_arg, resolve_game
 from sleight_of_hand.agents.baselines import AlwaysCallAgent, RandomAgent, RuleBasedAgent
 from sleight_of_hand.eval.plotting import CATEGORICAL, new_figure
 from sleight_of_hand.ga.evolve import GAConfig, GeneticAlgorithm
@@ -27,7 +28,9 @@ def main():
     parser.add_argument("--generations", type=int, default=30)
     parser.add_argument("--hands-per-opponent", type=int, default=300)
     parser.add_argument("--seed", type=int, default=0)
+    add_gamemode_arg(parser)
     args = parser.parse_args()
+    game = resolve_game(args)
 
     opponent_pool = {
         "always_call": lambda: AlwaysCallAgent(),
@@ -40,7 +43,7 @@ def main():
         n_hands_per_opponent=args.hands_per_opponent,
         seed=args.seed,
     )
-    ga = GeneticAlgorithm(config, opponent_pool)
+    ga = GeneticAlgorithm(config, opponent_pool, game=game)
 
     def report(stats):
         print(

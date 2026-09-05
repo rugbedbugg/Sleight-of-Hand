@@ -17,7 +17,8 @@ from dataclasses import dataclass
 
 from ..agents.baselines import RULE_BASED_PARAMS, RuleBasedAgent
 from ..bayes.opponent_model import BayesianOpponentModel
-from ..engine.game import LeducGame
+from ..engine.protocol import Game
+from ..engine.registry import get_game
 from ..policy.heuristic import PolicyParams
 
 
@@ -30,12 +31,13 @@ class BeliefTrace:
 
 
 def play_hand_with_belief_tracking(
-    my_player: int, params: PolicyParams, rng: random.Random
+    my_player: int, params: PolicyParams, rng: random.Random, game: Game | None = None
 ) -> BeliefTrace:
-    state = LeducGame.new_hand(rng)
+    game = game or get_game()
+    state = game.new_hand(rng)
     opponent = 1 - my_player
     true_card = state.private[opponent]
-    model = BayesianOpponentModel(state.private[my_player], params=params)
+    model = BayesianOpponentModel(state.private[my_player], params=params, game=game)
 
     agents = [None, None]
     agents[my_player] = RuleBasedAgent(params=params, rng=rng)
@@ -43,12 +45,12 @@ def play_hand_with_belief_tracking(
 
     while not state.done:
         player = state.to_act
-        legal = LeducGame.legal_actions(state)
+        legal = game.legal_actions(state)
         action = agents[player].act(state, legal)
         if player == opponent:
             model.update_on_action(state, opponent=opponent, action=action)
         prev_public = state.public
-        state = LeducGame.apply_action(state, action, rng=rng)
+        state = game.apply_action(state, action, rng=rng)
         if state.public != prev_public and state.public != -1:
             model.update_on_public_card(state.public)
 

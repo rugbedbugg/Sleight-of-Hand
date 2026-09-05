@@ -18,6 +18,8 @@ from typing import Callable
 
 from ..agents.base import Agent
 from ..agents.baselines import RuleBasedAgent
+from ..engine.protocol import Game
+from ..engine.registry import get_game
 from ..eval.harness import play_match
 from ..policy.heuristic import PolicyParams
 from .genome import crossover, mutate, random_genome
@@ -62,7 +64,13 @@ def _tournament_select(
 
 
 class GeneticAlgorithm:
-    def __init__(self, config: GAConfig, opponent_pool: dict[str, Callable[[], Agent]]):
+    def __init__(
+        self,
+        config: GAConfig,
+        opponent_pool: dict[str, Callable[[], Agent]],
+        game: Game | None = None,
+    ):
+        self.game = game or get_game()
         self.config = config
         self.opponent_pool = opponent_pool
 
@@ -72,13 +80,13 @@ class GeneticAlgorithm:
         scores = []
         for factory in self.opponent_pool.values():
             opponent = factory()
-            result = play_match(contender, opponent, cfg.n_hands_per_opponent, rng)
+            result = play_match(contender, opponent, cfg.n_hands_per_opponent, rng, game=self.game)
             scores.append(result.mbb_a)
         baseline_score = sum(scores) / len(scores)
 
         if champion is not None and cfg.coevolve_frac > 0:
             champ_agent = RuleBasedAgent(params=champion, rng=rng)
-            champ_result = play_match(contender, champ_agent, cfg.n_hands_per_opponent, rng)
+            champ_result = play_match(contender, champ_agent, cfg.n_hands_per_opponent, rng, game=self.game)
             return (1 - cfg.coevolve_frac) * baseline_score + cfg.coevolve_frac * champ_result.mbb_a
         return baseline_score
 

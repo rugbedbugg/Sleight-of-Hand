@@ -29,13 +29,20 @@ import math
 
 from ..engine.actions import ActionType
 from ..engine.cards import RANKS, remaining_counts
-from ..engine.game import LeducGame
+from ..engine.protocol import Game
+from ..engine.registry import get_game
 from ..engine.state import GameState, RoundState
 from ..policy.heuristic import DEFAULT_PARAMS, PolicyParams, action_probs
 
 
 class BayesianOpponentModel:
-    def __init__(self, my_card: int, params: PolicyParams = DEFAULT_PARAMS):
+    def __init__(
+        self,
+        my_card: int,
+        params: PolicyParams = DEFAULT_PARAMS,
+        game: Game | None = None,
+    ):
+        self.game = game or get_game()
         self.my_card = my_card
         self.params = params
         self.public = -1
@@ -61,7 +68,7 @@ class BayesianOpponentModel:
         `action` in `state_before` (the state prior to the action being
         applied)."""
         to_call = state_before.round_state.to_call(opponent)
-        legal = LeducGame.legal_actions(state_before)
+        legal = self.game.legal_actions(state_before)
 
         new_belief: dict[int, float] = {}
         for card, prior_p in self.belief.items():
@@ -116,6 +123,7 @@ def infer_belief(
     my_player: int,
     params: PolicyParams = DEFAULT_PARAMS,
     use_actions: bool = True,
+    game: Game | None = None,
 ) -> "BayesianOpponentModel":
     """Reconstruct the belief over the opponent's card from scratch by
     replaying `state.history` (this is a pure function of publicly known
@@ -128,8 +136,9 @@ def infer_belief(
     combinatorics) and ignores the opponent's betting behaviour -- used for
     the "search without an opponent model" ablation.
     """
+    game = game or get_game()
     my_card = state.private[my_player]
-    model = BayesianOpponentModel(my_card, params=params)
+    model = BayesianOpponentModel(my_card, params=params, game=game)
 
     replay = GameState(
         private=(my_card, my_card),
@@ -142,8 +151,8 @@ def infer_belief(
         action = ActionType(action_int)
         if player != my_player and use_actions:
             model.update_on_action(replay, opponent=player, action=action)
-        replay = LeducGame.apply_action(replay, action)
-        if replay.awaiting_community:
+        replay = game.apply_action(replay, action)
+        if game.awaiting_chance(replay):
             model.update_on_public_card(state.public)
-            replay = LeducGame.deal_community(replay, state.public)
+            replay = game.apply_chance(replay, state.public)
     return model

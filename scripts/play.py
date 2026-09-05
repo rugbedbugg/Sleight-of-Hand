@@ -33,7 +33,7 @@ from sleight_of_hand.agents.bayes_search_agent import BayesSearchAgent  # noqa: 
 from sleight_of_hand.agents.human import HumanAgent  # noqa: E402
 from sleight_of_hand.engine.actions import ActionType  # noqa: E402
 from sleight_of_hand.engine.cards import rank_name  # noqa: E402
-from sleight_of_hand.engine.game import LeducGame  # noqa: E402
+from sleight_of_hand.cli import add_gamemode_arg, resolve_game  # noqa: E402
 from sleight_of_hand.policy.heuristic import PolicyParams  # noqa: E402
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
@@ -46,7 +46,7 @@ def load_ga_genome(path: str) -> PolicyParams | None:
         return PolicyParams(**json.load(f)["params"])
 
 
-def build_opponent(name: str, rng: random.Random):
+def build_opponent(name: str, rng: random.Random, game=None):
     if name == "random":
         return RandomAgent(rng=rng)
     if name == "always_call":
@@ -54,7 +54,7 @@ def build_opponent(name: str, rng: random.Random):
     if name == "rule_based":
         return RuleBasedAgent(rng=rng, name="rule_based")
     if name == "bayes_search":
-        return BayesSearchAgent(rng=rng, name="bayes_search")
+        return BayesSearchAgent(rng=rng, name="bayes_search", game=game)
     if name == "ga_tuned":
         genome = load_ga_genome(os.path.join(RESULTS_DIR, "ga_best_genome.json"))
         if genome is None:
@@ -82,7 +82,7 @@ def maybe_reveal(agent, human_seat: int, reveal: bool):
         print(f"      [AI search EVs: {evs}]")
 
 
-def play_hand(hand_no, human, opponent, human_seat, rng, reveal):
+def play_hand(hand_no, human, opponent, human_seat, rng, reveal, game):
     ai_seat = 1 - human_seat
     seats = [None, None]
     seats[human_seat] = human
@@ -91,12 +91,12 @@ def play_hand(hand_no, human, opponent, human_seat, rng, reveal):
 
     print(f"\n{'=' * 66}\nHand {hand_no}   (you act {'first' if human_seat == 0 else 'second'})\n{'=' * 66}")
 
-    state = LeducGame.new_hand(rng)
+    state = game.new_hand(rng)
     print(f"  You are dealt: {rank_name(state.private[human_seat])}")
 
     while not state.done:
         player = state.to_act
-        legal = LeducGame.legal_actions(state)
+        legal = game.legal_actions(state)
         prev_public = state.public
         action = seats[player].act(state, legal)
 
@@ -105,11 +105,11 @@ def play_hand(hand_no, human, opponent, human_seat, rng, reveal):
             print(f"  {names[player]} chose: {_verb(action, to_call)}")
             maybe_reveal(opponent, human_seat, reveal)
 
-        state = LeducGame.apply_action(state, action, rng=rng)
+        state = game.apply_action(state, action, rng=rng)
         if state.public != prev_public and state.public != -1:
             print(f"  *** community card revealed: {rank_name(state.public)} ***")
 
-    p = LeducGame.payoffs(state)
+    p = game.payoffs(state)
     if state.folded != -1:
         print(f"  {names[state.folded]} folded.")
     else:
@@ -142,14 +142,20 @@ def main():
     parser.add_argument("--hands", type=int, default=0, help="number of hands (0 = until you quit)")
     parser.add_argument("--seed", type=int, default=None, help="RNG seed for a reproducible session")
     parser.add_argument("--reveal", action="store_true", help="show the AI's belief and search EVs each turn")
+    add_gamemode_arg(parser)
     args = parser.parse_args()
 
+    game = resolve_game(args)
     rng = random.Random(args.seed)
     human = HumanAgent(name="You")
-    opponent = build_opponent(args.opponent, rng=random.Random(None if args.seed is None else args.seed + 1))
+    opponent = build_opponent(
+        args.opponent,
+        rng=random.Random(None if args.seed is None else args.seed + 1),
+        game=game,
+    )
 
     print("#" * 66)
-    print(f"#  Leduc hold'em -- You vs {opponent.name}")
+    print(f"#  {game.spec.name} -- You vs {opponent.name}")
     print("#  Actions: [f]old  [c]heck/call  [r]bet/raise. Round-1 bet=2, round-2 bet=4.")
     print("#  Pair with the board wins; else higher card wins; ties split.")
     print("#" * 66)
@@ -160,7 +166,7 @@ def main():
         while args.hands == 0 or hand_no < args.hands:
             hand_no += 1
             human_seat = (hand_no - 1) % 2  # alternate position each hand for fairness
-            bankroll += play_hand(hand_no, human, opponent, human_seat, rng, args.reveal)
+            bankroll += play_hand(hand_no, human, opponent, human_seat, rng, args.reveal, game)
             print(f"  Running total: {bankroll:+.1f} chips over {hand_no} hand(s).")
             if args.hands == 0:
                 cont = input("  Play another hand? [Y/n] ").strip().lower()

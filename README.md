@@ -79,12 +79,17 @@ pip install -r requirements.txt
 
 ## Running things
 
+All entry points take `--gamemode` to select the variant. Only `leduc` is
+implemented today; the reserved modes (`deuce27`, `mini27`) are rejected
+with an explanatory message until they land.
+
 ```bash
 # unit tests (engine, policy, Bayes model, search, GA, eval) -- ~10s
 pytest tests/ -q
 
 # live demo: watch the agent play, with belief state and search EVs per decision
 python demo.py --hands 5 --seed 1
+python demo.py --gamemode leduc --hands 5 --seed 1   # equivalent; leduc is the default
 
 # run everything and populate results/ (takes a few minutes; runs the
 # steps below in order)

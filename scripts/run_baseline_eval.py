@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
 
+from sleight_of_hand.cli import add_gamemode_arg, resolve_game
 from sleight_of_hand.agents.baselines import AlwaysCallAgent, RandomAgent, RuleBasedAgent
 from sleight_of_hand.agents.bayes_search_agent import BayesSearchAgent
 from sleight_of_hand.eval.harness import round_robin
@@ -48,7 +49,9 @@ def main():
     parser.add_argument("--hands", type=int, default=4000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--genome", type=str, default=os.path.join(RESULTS_DIR, "ga_best_genome.json"))
+    add_gamemode_arg(parser)
     args = parser.parse_args()
+    game = resolve_game(args)
 
     ga_genome = None
     if os.path.exists(args.genome):
@@ -61,7 +64,7 @@ def main():
     factories = build_agent_factories(ga_genome)
     names = list(factories.keys())
     print(f"Round-robin: {names}, {args.hands} hands per pairing")
-    results = round_robin(factories, n_hands=args.hands, seed=args.seed)
+    results = round_robin(factories, n_hands=args.hands, seed=args.seed, game=game)
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     csv_path = os.path.join(RESULTS_DIR, "win_rate_matrix.csv")
