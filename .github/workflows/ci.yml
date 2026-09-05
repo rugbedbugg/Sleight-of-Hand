@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both ends of the range pyproject.toml promises (requires-python
+        # >= 3.10); .python-version pins what development uses day to day.
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Create the environment
+        # Mirrors the workflow documented in CONTRIBUTING.md.
+        run: uv venv --python ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv pip install -r requirements.txt
+
+      - name: Run tests
+        run: uv run pytest tests/ -q
+
+      - name: Smoke-test the entry points
+        run: |
+          uv run python demo.py --hands 2 --seed 1
+          uv run python demo.py --gamemode leduc --hands 1 --seed 2
+
+      - name: Reserved gamemodes fail with a message, not a traceback
+        run: |
+          if uv run python demo.py --gamemode deuce27 2>&1 | tee /dev/stderr | grep -q Traceback; then
+            echo "::error::--gamemode deuce27 raised instead of exiting cleanly"
+            exit 1
+          fi
