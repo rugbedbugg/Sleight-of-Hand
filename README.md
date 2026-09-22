@@ -5,6 +5,10 @@
 A heads-up Leduc hold'em agent built on Bayesian opponent modeling,
 expectiminimax game-tree search, and genetic-algorithm strategy tuning.
 
+An initial **ChipZen No-Limit Hold'em port** reuses the five-parameter
+policy with Hold'em equity estimation and legal bet sizing. See the
+[setup, validation, and upload guide](docs/CHIPZEN.md).
+
 ## Architecture
 
 ```
@@ -72,9 +76,9 @@ results/        generated plots, CSVs, and the GA's best genome (produced by scr
 ## Setup
 
 ```bash
-python3 -m venv .venv
+uv venv
 source .venv/bin/activate
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ## Running things
@@ -154,3 +158,7 @@ stationary strategy, not two-sided Nash exploitability
 ## Results
 
 Artifacts are in `results/` (regenerate with `python scripts/run_all_experiments.py`).
+
+## License
+
+[MIT](LICENSE).

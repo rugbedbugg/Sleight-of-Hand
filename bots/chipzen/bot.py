@@ -1,0 +1,173 @@
+"""ChipZen NLHE adapter for Sleight-of-Hand's five-parameter policy."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import random
+import sys
+from dataclasses import replace
+
+from chipzen import Action, Bot, GameState
+from chipzen.client import run_bot
+
+from sleight_of_hand.engine.actions import ActionType
+from sleight_of_hand.holdem.equity import estimate_equity
+from sleight_of_hand.policy.heuristic import (
+    DEFAULT_PARAMS,
+    PolicyParams,
+    action_probs_from_strength,
+    sample_action,
+)
+
+
+def live_opponents(state: GameState) -> int:
+    """Seat-indexed stacks include folded players; zero stacks can be all-in."""
+    seats = set(range(len(state.opponent_stacks) + 1)) - {state.your_seat}
+    folded = {
+        entry.get("seat")
+        for entry in state.action_history
+        if entry.get("action") == "fold"
+    }
+    return len(seats - folded)
+
+
+def raise_amount(state: GameState, aggression: float) -> int:
+    """Use a pot-based raise-to target, bounded by the server's legal totals.
+
+    The minimum already includes the current bet and minimum increment.
+    Add up to a pot-sized amount above that minimum as aggression increases;
+    never interpret the resulting amount as chips to add to a previous bet.
+    """
+    upper = state.max_raise
+    lower = min(state.min_raise, upper)  # short all-in below the normal minimum
+    extra = round((state.pot + min(state.to_call, state.your_stack)) * aggression)
+    return max(lower, min(upper, lower + extra))
+
+
+def betting_params(state: GameState, params: PolicyParams) -> PolicyParams:
+    """Adjust equity thresholds for the price of continuing.
+
+    Calling a pot-sized bet requires 1/3 equity to break even. Preserve the
+    original call threshold at that reference price; its offset from 1/3
+    remains the strategy's risk margin at other prices. Cap the payment
+    at our stack for short all-in calls. Pot is the server's current pot,
+    including the opponent's bet, but not our pending call.
+
+    This is a one-pot approximation: future betting, equity realization
+    and side-pot eligibility still require a richer model.
+    """
+    if "check" in state.valid_actions or state.to_call <= 0:
+        return params
+    cost = min(state.to_call, state.your_stack)
+    if cost <= 0 or state.pot < 0:
+        return params
+    price = cost / (state.pot + cost)
+    price_adjustment = price - 1.0 / 3.0
+    threshold = max(0.0, min(1.0, params.call_threshold + price_adjustment))
+    return replace(
+        params,
+        call_threshold=threshold,
+        value_bet_threshold=min(
+            1.0,
+            max(threshold, params.value_bet_threshold + max(0.0, price_adjustment)),
+        ),
+    )
+
+
+class SleightOfHandBot(Bot):
+    """Initial policy port; no exhaustive search or learned Hold'em ranges."""
+
+    def __init__(
+        self,
+        params: PolicyParams = DEFAULT_PARAMS,
+        seed: int | None = None,
+        samples: int = 128,
+    ) -> None:
+        if not 1 <= samples <= 512:
+            raise ValueError("samples must be between 1 and 512")
+        self.params = params.clipped()
+        self.rng = random.Random(seed)
+        self.samples = samples
+
+    def decide(self, state: GameState) -> Action:
+        valid = set(state.valid_actions)
+        if not valid:
+            raise ValueError("ChipZen requested a decision without legal actions")
+        passive = "check" if "check" in valid else "call" if "call" in valid else None
+        mapped = {}
+        if passive:
+            mapped[ActionType.CALL] = (
+                Action.check() if passive == "check" else Action.call()
+            )
+        if "fold" in valid:
+            mapped[ActionType.FOLD] = Action.fold()
+        if "raise" in valid and state.max_raise > 0:
+            mapped[ActionType.RAISE] = Action.raise_to(
+                raise_amount(state, self.params.aggression)
+            )
+        elif "all_in" in valid:
+            # Older SDK vocabulary: only emit this if the server offers it.
+            mapped[ActionType.RAISE] = Action.all_in()
+        if not mapped:
+            raise ValueError(f"no supported Hold'em actions: {sorted(valid)}")
+        if len(mapped) == 1:
+            return next(iter(mapped.values()))
+
+        try:
+            strength = estimate_equity(
+                [str(c) for c in state.hole_cards],
+                [str(c) for c in state.board],
+                live_opponents(state),
+                self.rng,
+                self.samples,
+            )
+        except ValueError as exc:
+            # Missing/invalid cards should lose one decision, not the session.
+            print(f"Hold'em state unavailable: {exc}", file=sys.stderr)
+            for action in (ActionType.CALL, ActionType.FOLD):
+                if action in mapped and (
+                    action == ActionType.FOLD or passive == "check"
+                ):
+                    return mapped[action]
+            return next(iter(mapped.values()))
+
+        probs = action_probs_from_strength(
+            strength,
+            list(mapped),
+            0 if passive == "check" else state.to_call,
+            betting_params(state, self.params),
+        )
+        return mapped[sample_action(self.rng, probs)]
+
+
+def main() -> None:
+    url = os.environ.get("CHIPZEN_WS_URL") or (
+        sys.argv[1] if len(sys.argv) > 1 else None
+    )
+    if not url:
+        print(
+            "Set CHIPZEN_WS_URL or pass the WebSocket URL as the first argument.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    params = PolicyParams(**json.loads(os.environ.get("SLEIGHT_PARAMS", "{}")))
+    seed_text = os.environ.get("SLEIGHT_SEED")
+    bot = SleightOfHandBot(
+        params=params,
+        seed=int(seed_text) if seed_text is not None else None,
+        samples=int(os.environ.get("SLEIGHT_EQUITY_SAMPLES", "128")),
+    )
+    asyncio.run(
+        run_bot(
+            url,
+            bot,
+            token=os.environ.get("CHIPZEN_TOKEN"),
+            ticket=os.environ.get("CHIPZEN_TICKET"),
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

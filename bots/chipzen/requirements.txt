@@ -1,0 +1,3 @@
+# Conservative runtime pins. Update deliberately and rerun SDK conformance.
+chipzen-bot==0.4.0
+websockets==15.0.1

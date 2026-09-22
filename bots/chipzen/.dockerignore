@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!requirements.txt
+!bot.py
+!LICENSE
+!sleight_of_hand/
+!sleight_of_hand/**
+**/__pycache__/
+**/*.pyc

@@ -5,6 +5,9 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -12,6 +15,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -32,19 +36,29 @@ jobs:
         run: uv venv --python ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv pip install -r requirements.txt
+        run: uv pip install -r requirements-dev.txt
+
+      - name: Lint and format the ChipZen port
+        run: |
+          uv run --no-project ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py tests/test_chipzen.py
+          uv run --no-project ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py tests/test_chipzen.py
 
       - name: Run tests
-        run: uv run pytest tests/ -q
+        run: uv run --no-project python -m pytest tests/ -q
+
+      - name: Stage and validate the ChipZen runtime
+        run: |
+          uv run --no-project python scripts/build_chipzen.py
+          uv run --no-project chipzen-sdk validate build/chipzen --check-connectivity
 
       - name: Smoke-test the entry points
         run: |
-          uv run python demo.py --hands 2 --seed 1
-          uv run python demo.py --gamemode leduc --hands 1 --seed 2
+          uv run --no-project python demo.py --hands 2 --seed 1
+          uv run --no-project python demo.py --gamemode leduc --hands 1 --seed 2
 
       - name: Reserved gamemodes fail with a message, not a traceback
         run: |
-          if uv run python demo.py --gamemode deuce27 2>&1 | tee /dev/stderr | grep -q Traceback; then
+          if uv run --no-project python demo.py --gamemode deuce27 2>&1 | tee /dev/stderr | grep -q Traceback; then
             echo "::error::--gamemode deuce27 raised instead of exiting cleanly"
             exit 1
           fi

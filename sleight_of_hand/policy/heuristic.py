@@ -98,7 +98,22 @@ def action_probs(
 ) -> dict[ActionType, float]:
     """P(action | card, context) under the heuristic policy, restricted to
     `legal_actions` and normalized to sum to 1."""
-    s = hand_strength(private, public)
+    return action_probs_from_strength(
+        hand_strength(private, public), legal_actions, to_call, params
+    )
+
+
+def action_probs_from_strength(
+    s: float,
+    legal_actions: list[ActionType],
+    to_call: int,
+    params: PolicyParams = DEFAULT_PARAMS,
+) -> dict[ActionType, float]:
+    """The shared betting formula with a game-specific [0, 1] strength input.
+
+    CALL represents either checking or calling. Callers translating an
+    external game's action set must map those actions before invoking this.
+    """
     can_raise = RAISE in legal_actions
     z_strong = _sigmoid(params.steepness * (s - params.value_bet_threshold))
 
@@ -120,7 +135,12 @@ def action_probs(
         if p_raise > 0:
             probs[RAISE] = p_raise
 
+    probs = {a: p for a, p in probs.items() if a in legal_actions}
     total = sum(probs.values())
+    if total <= 0:
+        if not legal_actions:
+            raise ValueError("at least one legal action is required")
+        return {a: 1.0 / len(legal_actions) for a in legal_actions}
     return {a: p / total for a, p in probs.items() if p > 0}
 
 
