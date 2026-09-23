@@ -26,42 +26,63 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Install the matrix Python with mise
+        # CI-only mise.toml (not committed) selects the matrix interpreter;
+        # it takes precedence over .python-version, which stays the
+        # developer's day-to-day pin.
+        uses: jdx/mise-action@v4
         with:
-          enable-cache: true
+          version: 2026.9.12
+          mise_toml: |
+            [tools]
+            python = "${{ matrix.python-version }}"
 
       - name: Create the environment
-        # Mirrors the workflow documented in CONTRIBUTING.md.
-        run: uv venv --python ${{ matrix.python-version }}
+        run: |
+          "$(mise which python)" -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
-        run: uv pip install -r requirements-dev.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Confirm the matrix interpreter
+        run: |
+          python --version
+          command -v python ruff chipzen-sdk
+          python - <<'PY'
+          import sys
+          want = "${{ matrix.python-version }}"
+          got = f"{sys.version_info.major}.{sys.version_info.minor}"
+          assert got == want, f"running Python {got}, matrix asked for {want}"
+          assert sys.prefix.endswith("/.venv"), f"not the job venv: {sys.prefix}"
+          PY
 
       - name: Lint and format the ChipZen port
         run: |
-          uv run --no-project ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py tests/test_chipzen.py tests/test_preflop.py
-          uv run --no-project ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py tests/test_chipzen.py tests/test_preflop.py
+          ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py tests/test_chipzen.py tests/test_preflop.py
+          ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py tests/test_chipzen.py tests/test_preflop.py
 
       - name: Run tests
-        run: uv run --no-project python -m pytest tests/ -q
+        run: python -m pytest tests/ -q
 
       - name: Predict ChipZen preflop frequencies
-        run: uv run --no-project python scripts/preflop_calibration.py
+        run: python scripts/preflop_calibration.py
 
       - name: Stage and validate the ChipZen runtime
         run: |
-          uv run --no-project python scripts/build_chipzen.py
-          uv run --no-project chipzen-sdk validate build/chipzen --check-connectivity
+          python scripts/build_chipzen.py
+          chipzen-sdk validate build/chipzen --check-connectivity
 
       - name: Smoke-test the entry points
         run: |
-          uv run --no-project python demo.py --hands 2 --seed 1
-          uv run --no-project python demo.py --gamemode leduc --hands 1 --seed 2
+          python demo.py --hands 2 --seed 1
+          python demo.py --gamemode leduc --hands 1 --seed 2
 
       - name: Reserved gamemodes fail with a message, not a traceback
         run: |
-          if uv run --no-project python demo.py --gamemode deuce27 2>&1 | tee /dev/stderr | grep -q Traceback; then
+          if python demo.py --gamemode deuce27 2>&1 | tee /dev/stderr | grep -q Traceback; then
             echo "::error::--gamemode deuce27 raised instead of exiting cleanly"
             exit 1
           fi
