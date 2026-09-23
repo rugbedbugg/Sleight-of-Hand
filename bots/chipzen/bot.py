@@ -1,4 +1,4 @@
-"""ChipZen NLHE adapter for Sleight-of-Hand's five-parameter policy."""
+"""ChipZen NLHE adapter: heads-up preflop policy, then the five-parameter policy."""
 
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ from chipzen import Action, Bot, GameState
 from chipzen.client import run_bot
 
 from sleight_of_hand.engine.actions import ActionType
+from sleight_of_hand.holdem import preflop
 from sleight_of_hand.holdem.equity import estimate_equity
+from sleight_of_hand.holdem.hands import hand_class
 from sleight_of_hand.policy.heuristic import (
     DEFAULT_PARAMS,
     PolicyParams,
@@ -77,19 +79,70 @@ def betting_params(state: GameState, params: PolicyParams) -> PolicyParams:
 
 
 class SleightOfHandBot(Bot):
-    """Initial policy port; no exhaustive search or learned Hold'em ranges."""
+    """Heads-up preflop policy first; otherwise the Season 6 equity policy.
+
+    No exhaustive search, opponent ranges or learned Hold'em strategy.
+    """
 
     def __init__(
         self,
         params: PolicyParams = DEFAULT_PARAMS,
         seed: int | None = None,
         samples: int = 128,
+        preflop_config: preflop.PreflopConfig = preflop.DEFAULT_PREFLOP,
     ) -> None:
         if not 1 <= samples <= 512:
             raise ValueError("samples must be between 1 and 512")
         self.params = params.clipped()
         self.rng = random.Random(seed)
         self.samples = samples
+        self.preflop_config = preflop_config
+        self._warned_preflop = False
+
+    def preflop_action(self, state: GameState) -> Action | None:
+        """Decide a heads-up preflop state, or ``None`` to use Season 6.
+
+        Declines multiway tables, states whose history cannot be reconciled
+        with the pot, and unreadable cards (Season 6's safe fallback owns
+        those). Unsupported choices degrade to the passive legal action;
+        folding is never chosen when checking is free.
+        """
+        if state.phase != "preflop":
+            return None
+        context = preflop.derive_context(state)
+        if context is None:
+            if len(state.opponent_stacks) == 1 and not self._warned_preflop:
+                self._warned_preflop = True
+                print(
+                    "Preflop context unavailable; using the Season 6 policy.",
+                    file=sys.stderr,
+                )
+            return None
+        try:
+            label = hand_class([str(c) for c in state.hole_cards])
+        except ValueError:
+            return None
+        probs = preflop.action_distribution(context, label, self.preflop_config)
+        choices = [a for a, p in probs.items() if p > 0]
+        choice = self.rng.choices(choices, weights=[probs[a] for a in choices])[0]
+
+        valid = set(state.valid_actions)
+        if choice == preflop.RAISE:
+            if "raise" in valid and state.max_raise > 0:
+                return Action.raise_to(
+                    preflop.raise_to(
+                        context, state.min_raise, state.max_raise, self.preflop_config
+                    )
+                )
+            if "all_in" in valid:
+                return Action.all_in()
+        if choice == preflop.FOLD and "fold" in valid and "check" not in valid:
+            return Action.fold()
+        if "check" in valid:
+            return Action.check()
+        if "call" in valid:
+            return Action.call()
+        return Action.fold() if "fold" in valid else None
 
     def decide(self, state: GameState) -> Action:
         valid = set(state.valid_actions)
@@ -114,6 +167,9 @@ class SleightOfHandBot(Bot):
             raise ValueError(f"no supported Hold'em actions: {sorted(valid)}")
         if len(mapped) == 1:
             return next(iter(mapped.values()))
+        action = self.preflop_action(state)
+        if action is not None:
+            return action
 
         try:
             strength = estimate_equity(

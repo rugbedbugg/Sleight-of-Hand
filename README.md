@@ -5,8 +5,9 @@
 A heads-up Leduc hold'em agent built on Bayesian opponent modeling,
 expectiminimax game-tree search, and genetic-algorithm strategy tuning.
 
-An initial **ChipZen No-Limit Hold'em port** reuses the five-parameter
-policy with Hold'em equity estimation and legal bet sizing. See the
+A **ChipZen No-Limit Hold'em port** combines a context-aware heads-up
+preflop policy with the five-parameter policy, Hold'em equity estimation
+and legal bet sizing for later streets. See the
 [setup, validation, and upload guide](docs/CHIPZEN.md).
 
 ## Architecture

@@ -40,11 +40,14 @@ jobs:
 
       - name: Lint and format the ChipZen port
         run: |
-          uv run --no-project ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py tests/test_chipzen.py
-          uv run --no-project ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py tests/test_chipzen.py
+          uv run --no-project ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py tests/test_chipzen.py tests/test_preflop.py
+          uv run --no-project ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py tests/test_chipzen.py tests/test_preflop.py
 
       - name: Run tests
         run: uv run --no-project python -m pytest tests/ -q
+
+      - name: Predict ChipZen preflop frequencies
+        run: uv run --no-project python scripts/preflop_calibration.py
 
       - name: Stage and validate the ChipZen runtime
         run: |

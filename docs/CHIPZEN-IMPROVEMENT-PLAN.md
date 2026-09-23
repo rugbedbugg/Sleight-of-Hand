@@ -61,6 +61,11 @@ runtime stays within budget, and benchmark results support the change.
 
 ## 3. Improve preflop decisions
 
+Status (2026-09-23): PLUMBER's diagnostics moved this step ahead of steps 1
+and 2. Version 3 adds a first heads-up baseline; multiway, opponent
+adaptation and sourced ranges remain open. See
+[CHIPZEN.md](CHIPZEN.md#version-3-context-aware-heads-up-preflop).
+
 Account for position, effective stacks, previous raises, and players still
 to act. Raw showdown equity alone misses the cost of acting early and the
 possibility of further raises.
