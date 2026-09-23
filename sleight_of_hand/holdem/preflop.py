@@ -102,19 +102,29 @@ class PreflopContext:
 def derive_context(state) -> PreflopContext | None:
     """Classify a heads-up preflop decision, or ``None`` if unsupported.
 
+    See :func:`diagnose_context`, which also names the reason for ``None``.
+    """
+    return diagnose_context(state)[0]
+
+
+def diagnose_context(state) -> tuple[PreflopContext | None, str]:
+    """Derive the context, or ``(None, reason)`` naming why it was declined.
+
     Uses the synthetic blind posts in ``action_history`` (blinds rise during
     a match, so the posted big blind is the current level) and raise-to
     totals. Call amounts are never read: the protocol's examples disagree on
     whether they are totals or increments. Each player's bet is rebuilt
     from posts and raise totals, then checked against ``pot`` and
-    ``to_call``; any disagreement returns ``None`` so the caller falls back
+    ``to_call``; any disagreement is declined so the caller falls back
     rather than acting on a misread state. ``to_call`` may be the full amount
     owed or that amount capped at our stack; both are accepted and yield the
     same context, because only the rebuilt bets feed it. Multiway tables
-    return ``None``.
+    are declined. The reason is ``"ok"`` on success.
     """
-    if state.phase != "preflop" or state.board or len(state.opponent_stacks) != 1:
-        return None
+    if state.phase != "preflop" or state.board:
+        return None, "not_preflop"
+    if len(state.opponent_stacks) != 1:
+        return None, "not_heads_up"
     hero = state.your_seat
     bets: dict[int, int] = {}
     blinds: dict[str, tuple[int, int]] = {}
@@ -125,11 +135,13 @@ def derive_context(state) -> PreflopContext | None:
             action, seat = entry["action"], int(entry["seat"])
             amount = int(entry.get("amount", 0))
             if entry.get("phase", "preflop") != "preflop" or amount < 0:
-                return None
+                return None, "bad_history_entry"
             if action == "post_ante":
                 antes += amount
                 continue
             if action in POSTS:
+                if action in blinds:
+                    return None, "duplicate_blind"
                 blinds[action] = (seat, amount)
                 bets[seat] = bets.get(seat, 0) + amount
                 level = max(level, bets[seat])
@@ -138,38 +150,43 @@ def derive_context(state) -> PreflopContext | None:
             if action in ("raise", "all_in"):
                 # Raise amounts are totals; a legacy all_in is read the same.
                 if amount <= level:
-                    return None
+                    return None, "raise_not_above_bet"
                 bets[seat], level = amount, amount
                 raises += 1
             elif action == "call":
                 bets[seat] = level
+            elif action == "fold":
+                return None, "hand_folded"
             elif action != "check":
-                return None  # a fold leaves no decision; unknown actions are unsafe
+                return None, "unknown_action"
     except (KeyError, TypeError, ValueError, AttributeError):
-        return None
+        return None, "unreadable_history"
 
     if set(blinds) != {"post_small_blind", "post_big_blind"}:
-        return None
+        return None, "missing_blinds"
     sb_seat, sb = blinds["post_small_blind"]
     bb_seat, bb = blinds["post_big_blind"]
-    if sb_seat == bb_seat or hero not in (sb_seat, bb_seat) or max(sb, bb) <= 0:
-        return None
+    if sb_seat == bb_seat or max(sb, bb) <= 0:
+        return None, "bad_blinds"
+    if hero not in (sb_seat, bb_seat):
+        return None, "hero_not_in_blinds"
     villain = bb_seat if hero == sb_seat else sb_seat
     if any(seat not in (sb_seat, bb_seat) for seat, _ in voluntary):
-        return None
+        return None, "unexpected_seat"
     position = Position.BUTTON if hero == sb_seat else Position.BIG_BLIND
     hero_bet, villain_bet = bets.get(hero, 0), bets.get(villain, 0)
     owed = max(0, villain_bet - hero_bet)
     cost = min(owed, state.your_stack)
     if state.pot != hero_bet + villain_bet + antes:
-        return None
+        return None, "pot_mismatch"
     if state.to_call not in (owed, cost):
-        return None
+        return None, "to_call_mismatch"
     if voluntary and (voluntary[0][0] != sb_seat or voluntary[-1][0] == hero):
-        return None  # the button acts first preflop; hero acting last is not our turn
+        # The button acts first preflop; hero acting last is not our turn.
+        return None, "impossible_order"
     hero_acted = any(seat == hero for seat, _ in voluntary)
     if not voluntary and position is not Position.BUTTON:
-        return None
+        return None, "impossible_order"
 
     villain_behind = state.opponent_stacks[0]
     if owed > 0 and (villain_behind == 0 or owed >= state.your_stack):
@@ -177,10 +194,10 @@ def derive_context(state) -> PreflopContext | None:
     elif raises == 0:
         facing = Facing.FIRST_IN if position is Position.BUTTON else Facing.LIMP
         if (facing is Facing.FIRST_IN) != (owed > 0):
-            return None
+            return None, "inconsistent_amount_owed"
     else:
         if owed <= 0:
-            return None
+            return None, "inconsistent_amount_owed"
         facing = (
             (Facing.LIMP_RAISED if hero_acted else Facing.OPEN)
             if raises == 1
@@ -205,7 +222,7 @@ def derive_context(state) -> PreflopContext | None:
             f"{'hero' if seat == hero else 'villain'}:{action}"
             for seat, action in voluntary
         ),
-    )
+    ), "ok"
 
 
 # ---------------------------------------------------------------------------

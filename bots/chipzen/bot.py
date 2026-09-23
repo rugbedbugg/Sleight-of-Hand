@@ -90,6 +90,7 @@ class SleightOfHandBot(Bot):
         seed: int | None = None,
         samples: int = 128,
         preflop_config: preflop.PreflopConfig = preflop.DEFAULT_PREFLOP,
+        trace_preflop: bool = False,
     ) -> None:
         if not 1 <= samples <= 512:
             raise ValueError("samples must be between 1 and 512")
@@ -97,6 +98,7 @@ class SleightOfHandBot(Bot):
         self.rng = random.Random(seed)
         self.samples = samples
         self.preflop_config = preflop_config
+        self.trace_preflop = trace_preflop
         self._warned_preflop = False
 
     def preflop_action(self, state: GameState) -> Action | None:
@@ -109,7 +111,7 @@ class SleightOfHandBot(Bot):
         """
         if state.phase != "preflop":
             return None
-        context = preflop.derive_context(state)
+        context, reason = preflop.diagnose_context(state)
         if context is None:
             if len(state.opponent_stacks) == 1 and not self._warned_preflop:
                 self._warned_preflop = True
@@ -117,15 +119,25 @@ class SleightOfHandBot(Bot):
                     "Preflop context unavailable; using the Season 6 policy.",
                     file=sys.stderr,
                 )
+            self._trace(state, None, reason)
             return None
         try:
             label = hand_class([str(c) for c in state.hole_cards])
         except ValueError:
+            self._trace(state, context, "unreadable_hole_cards")
             return None
         probs = preflop.action_distribution(context, label, self.preflop_config)
         choices = [a for a, p in probs.items() if p > 0]
         choice = self.rng.choices(choices, weights=[probs[a] for a in choices])[0]
+        action = self._legal_preflop(state, context, choice)
+        self._trace(
+            state, context, "ok" if action else "no_legal_action", label, probs, action
+        )
+        return action
 
+    def _legal_preflop(
+        self, state: GameState, context: preflop.PreflopContext, choice: str
+    ) -> Action | None:
         valid = set(state.valid_actions)
         if choice == preflop.RAISE:
             if "raise" in valid and state.max_raise > 0:
@@ -143,6 +155,65 @@ class SleightOfHandBot(Bot):
         if "call" in valid:
             return Action.call()
         return Action.fold() if "fold" in valid else None
+
+    def _trace(
+        self,
+        state: GameState,
+        context: preflop.PreflopContext | None,
+        reason: str,
+        label: str | None = None,
+        probs: dict[str, float] | None = None,
+        action: Action | None = None,
+    ) -> None:
+        """One JSON line per preflop decision when tracing is enabled.
+
+        Only public state and our own hand class; no hole cards, credentials
+        or connection details. Tracing never touches the RNG or the choice.
+        """
+        if not self.trace_preflop:
+            return
+        record = {
+            "event": "preflop",
+            "hand": state.hand_number,
+            "round_id": state.round_id,
+            "seat": state.your_seat,
+            "context_ok": context is not None,
+            "reason": reason,
+            "valid": list(state.valid_actions),
+            "to_call": state.to_call,
+            "pot": state.pot,
+            "your_stack": state.your_stack,
+            "opponent_stacks": list(state.opponent_stacks),
+            "min_raise": state.min_raise,
+            "max_raise": state.max_raise,
+            "history": [
+                [e.get("seat"), e.get("action"), e.get("amount")]
+                if isinstance(e, dict)
+                else repr(e)
+                for e in state.action_history
+            ],
+        }
+        if context is not None:
+            record.update(
+                position=context.position.value,
+                facing=context.facing.value,
+                big_blind=context.big_blind,
+                effective_bb=round(context.effective_stack_bb, 2),
+                hero_bet=context.hero_bet,
+                villain_bet=context.villain_bet,
+                amount_owed=context.amount_owed,
+                call_cost=context.call_cost,
+                sequence=list(context.action_sequence),
+            )
+        if label is not None:
+            record["hand_class"] = label
+        if probs is not None:
+            record["probs"] = {a: round(p, 4) for a, p in probs.items()}
+        if action is not None:
+            record["action"] = action.action
+            if action.action == "raise":
+                record["raise_to"] = action.amount
+        print(json.dumps(record, separators=(",", ":")), file=sys.stderr)
 
     def decide(self, state: GameState) -> Action:
         valid = set(state.valid_actions)
@@ -214,6 +285,7 @@ def main() -> None:
         params=params,
         seed=int(seed_text) if seed_text is not None else None,
         samples=int(os.environ.get("SLEIGHT_EQUITY_SAMPLES", "128")),
+        trace_preflop=os.environ.get("SLEIGHT_TRACE_PREFLOP") == "1",
     )
     asyncio.run(
         run_bot(

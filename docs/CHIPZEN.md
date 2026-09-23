@@ -69,6 +69,7 @@ strategy source; it does not use the optional Cython protection starter.
 | `SLEIGHT_PARAMS` | Existing `PolicyParams` defaults | JSON object with any of the five parameter names below |
 | `SLEIGHT_EQUITY_SAMPLES` | `128` | Monte Carlo trials per decision, integer from 1 to 512 |
 | `SLEIGHT_SEED` | Unseeded | Integer for reproducible local decisions |
+| `SLEIGHT_TRACE_PREFLOP` | Off | `1` writes one JSON line to stderr per heads-up preflop decision: derived context or the reason it was declined, hand class, action probabilities and chosen action. Diagnostic only; decisions are unchanged |
 
 The five parameters remain `value_bet_threshold`, `call_threshold`,
 `bluff_freq`, `aggression`, and `steepness`. For example:
@@ -267,6 +268,27 @@ correctly call wide when the price is good.
   context unavailable`.
 - Predicted frequencies describe the policy, not results. Only matches
   against opponents can show whether win rate improves.
+
+### Pre-evaluation gate
+
+`tests/test_preflop_gate.py` runs a matrix of legal heads-up preflop
+states. It covers 13 state shapes at 13 stack depths from 4 to 100bb,
+under both `to_call` readings. For each state it checks:
+
+- the two readings derive identical economics;
+- every action the policy can emit, for all 169 classes, is legal and
+  sized within server bounds, including perturbed and short all-in bounds;
+- policy coherence invariants hold;
+- the calibration scenarios produce exactly the bot's own sampling weights.
+
+It also checks that malformed states decline with a named reason and still
+decide legally, and that multiway and malformed states match Season 6
+decision for decision.
+
+`scripts/audit_preflop.py --policy` prints BB defence by open size and
+fold-to-shove on both sides of each stack bucket boundary.
+`scripts/audit_preflop.py --equity` re-estimates boundary equities with
+independent seeds and larger samples (report only).
 
 ### Reproduce and compare
 
