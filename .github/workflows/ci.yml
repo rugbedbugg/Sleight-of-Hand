@@ -61,8 +61,8 @@ jobs:
 
       - name: Lint and format the ChipZen port
         run: |
-          ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py
-          ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py
+          ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py
+          ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py
 
       - name: Run tests
         run: python -m pytest tests/ -q
@@ -71,6 +71,7 @@ jobs:
         run: |
           python scripts/preflop_calibration.py
           python scripts/audit_preflop.py --policy
+          python scripts/shove_adaptation_report.py
 
       - name: Stage and validate the ChipZen runtime
         run: |

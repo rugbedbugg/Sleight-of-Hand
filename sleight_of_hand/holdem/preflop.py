@@ -375,13 +375,19 @@ def assumed_villain_width(ctx: PreflopContext, config: PreflopConfig) -> float:
 
 
 def action_distribution(
-    ctx: PreflopContext, label: str, config: PreflopConfig = DEFAULT_PREFLOP
+    ctx: PreflopContext,
+    label: str,
+    config: PreflopConfig = DEFAULT_PREFLOP,
+    villain_width: float | None = None,
 ) -> dict[str, float]:
     """Probabilities of fold / call (or check) / raise for one hand class.
 
     Raise regions are combo-weighted tops of the strength order. Calls
     compare equity against the assumed villain range, discounted for
     realization unless all-in, with the exact price of this decision.
+    ``villain_width`` replaces the assumed shove range width (from
+    :mod:`.opponent`); it is ignored outside shove decisions, and ``None``
+    keeps the static version 3 assumption.
     """
     if ctx.facing is Facing.FIRST_IN:
         raise_p = share_in_top(label, config.btn_raise_top)
@@ -392,6 +398,8 @@ def action_distribution(
         return {RAISE: raise_p, CALL: 1.0 - raise_p, FOLD: 0.0}
 
     width = assumed_villain_width(ctx, config)
+    if villain_width is not None and ctx.facing is Facing.SHOVE:
+        width = villain_width
     equity = equity_vs_top(label, width)
     if ctx.facing is Facing.SHOVE:
         raise_p = 0.0  # calling already puts one of us all-in
@@ -416,7 +424,9 @@ def action_distribution(
 
 
 def weighted_frequencies(
-    ctx: PreflopContext, config: PreflopConfig = DEFAULT_PREFLOP
+    ctx: PreflopContext,
+    config: PreflopConfig = DEFAULT_PREFLOP,
+    villain_width: float | None = None,
 ) -> dict[str, float]:
     """Expected fold / call / raise shares over all 1,326 starting hands.
 
@@ -426,7 +436,7 @@ def weighted_frequencies(
     """
     totals = dict.fromkeys((FOLD, CALL, RAISE), 0.0)
     for label, combos in COMBOS.items():
-        for action, p in action_distribution(ctx, label, config).items():
+        for action, p in action_distribution(ctx, label, config, villain_width).items():
             totals[action] += combos * p / TOTAL_COMBOS
     return totals
 

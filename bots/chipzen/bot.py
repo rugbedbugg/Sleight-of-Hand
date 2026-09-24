@@ -16,6 +16,7 @@ from sleight_of_hand.engine.actions import ActionType
 from sleight_of_hand.holdem import preflop
 from sleight_of_hand.holdem.equity import estimate_equity
 from sleight_of_hand.holdem.hands import hand_class
+from sleight_of_hand.holdem.opponent import OPEN, RESHOVE, ShoveModel
 from sleight_of_hand.policy.heuristic import (
     DEFAULT_PARAMS,
     PolicyParams,
@@ -100,6 +101,42 @@ class SleightOfHandBot(Bot):
         self.preflop_config = preflop_config
         self.trace_preflop = trace_preflop
         self._warned_preflop = False
+        # Match-local: the SDK keeps one bot instance per match, and runs
+        # hooks and decide() strictly one message at a time.
+        self.shove_model = ShoveModel(preflop_config)
+        self._seat: int | None = None
+
+    def _learn_seat(self, message: dict) -> None:
+        for seat in message.get("seats", []) or []:
+            if isinstance(seat, dict) and seat.get("is_self"):
+                self._seat = int(seat.get("seat", 0))
+                return
+
+    def on_match_start(self, match_info: dict) -> None:
+        self._learn_seat(match_info)
+        super().on_match_start(match_info)
+
+    def on_reconnected(self, message: dict) -> None:
+        self._learn_seat(message)
+        super().on_reconnected(message)
+
+    def on_round_start(self, message: dict) -> None:
+        self.shove_model.record_round_start(message)
+        super().on_round_start(message)
+
+    def on_round_result(self, message: dict) -> None:
+        # Observation never raises and applies a hand entirely or not at all.
+        self.shove_model.observe_round_result(message, self._seat)
+        super().on_round_result(message)
+
+    def shove_estimate(self, context: preflop.PreflopContext) -> dict | None:
+        """Adaptive shove-range estimate for a shove decision, else None."""
+        if context.facing is not preflop.Facing.SHOVE:
+            return None
+        kind = RESHOVE if context.hero_acted else OPEN
+        return self.shove_model.estimate(
+            kind, preflop.stack_bucket(context.effective_stack_bb)
+        )
 
     def preflop_action(self, state: GameState) -> Action | None:
         """Decide a heads-up preflop state, or ``None`` to use Season 6.
@@ -111,6 +148,8 @@ class SleightOfHandBot(Bot):
         """
         if state.phase != "preflop":
             return None
+        if self._seat is None:
+            self._seat = state.your_seat
         context, reason = preflop.diagnose_context(state)
         if context is None:
             if len(state.opponent_stacks) == 1 and not self._warned_preflop:
@@ -126,12 +165,24 @@ class SleightOfHandBot(Bot):
         except ValueError:
             self._trace(state, context, "unreadable_hole_cards")
             return None
-        probs = preflop.action_distribution(context, label, self.preflop_config)
+        shove = self.shove_estimate(context)
+        probs = preflop.action_distribution(
+            context,
+            label,
+            self.preflop_config,
+            shove["adaptive_width"] if shove else None,
+        )
         choices = [a for a, p in probs.items() if p > 0]
         choice = self.rng.choices(choices, weights=[probs[a] for a in choices])[0]
         action = self._legal_preflop(state, context, choice)
         self._trace(
-            state, context, "ok" if action else "no_legal_action", label, probs, action
+            state,
+            context,
+            "ok" if action else "no_legal_action",
+            label,
+            probs,
+            action,
+            shove,
         )
         return action
 
@@ -164,6 +215,7 @@ class SleightOfHandBot(Bot):
         label: str | None = None,
         probs: dict[str, float] | None = None,
         action: Action | None = None,
+        shove: dict | None = None,
     ) -> None:
         """One JSON line per preflop decision when tracing is enabled.
 
@@ -205,6 +257,10 @@ class SleightOfHandBot(Bot):
                 call_cost=context.call_cost,
                 sequence=list(context.action_sequence),
             )
+        if shove is not None:
+            record["shove_model"] = {
+                k: round(v, 4) if isinstance(v, float) else v for k, v in shove.items()
+            }
         if label is not None:
             record["hand_class"] = label
         if probs is not None:

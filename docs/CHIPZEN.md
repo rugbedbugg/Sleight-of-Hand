@@ -290,6 +290,71 @@ fold-to-shove on both sides of each stack bucket boundary.
 `scripts/audit_preflop.py --equity` re-estimates boundary equities with
 independent seeds and larger samples (report only).
 
+### Adaptive shove defence (experimental, after rc1)
+
+A live test of `chipzen-v3-preflop-rc1` showed the fixed shove ranges are
+exploitable. At about 50bb effective, an opponent who jammed every hand
+won the blinds repeatedly, because version 3 assumes a deep open shove
+is the top 25% of hands and a reshove the top 15%, whatever the
+opponent actually does.
+
+`sleight_of_hand/holdem/opponent.py` adds a match-local `ShoveModel`
+owned by the bot. The SDK keeps one bot instance per match and runs
+hooks and `decide()` strictly in sequence. For each context and existing
+stack bucket, the model counts how often the villain actually shoves
+when able. The contexts are:
+
+- **open:** the villain's first action as button;
+- **reshove:** the villain responding after we limped or raised.
+
+Contexts are never pooled. The model then widens the assumed range:
+
+```
+p     = (n0 * p0 + shoves) / (n0 + opportunities)     n0 = 10, p0 = v3 width
+width = max(v3 width, 100 * p)
+```
+
+- **Evidence source:** evidence comes only from the canonical
+  `round_result.action_history`. The server sends it once per hand, even
+  when we never act. Hands are counted at most once per `round_id`.
+  - An open opportunity is every villain-button hand.
+  - A shove is a raise to the effective stack at the start of the hand.
+- **Parsing is transactional:** each hand is fully parsed and validated
+  before anything changes, so malformed or partial hands leave the model
+  untouched.
+- **Counts are cumulative, with no decay.** Old jams lose weight as
+  non-shove opportunities accumulate. The floor means the model only ever
+  widens.
+- **No evidence means version 3 exactly:** calibration and audit output
+  are byte-identical.
+- **Nothing is persisted or shared.** Showdown cards are never read.
+
+At 50bb (open shove, required equity 49.0%), from
+`scripts/shove_adaptation_report.py`:
+
+| Evidence | Width | Call share |
+| --- | --- | --- |
+| none (v3) | 25.0% | 10.9% |
+| 1 shove in 1 chance | 31.8% | 14.2% |
+| 3 in 4 | 39.3% | 18.7% |
+| 5 in 6 | 46.9% | 23.4% |
+| 8 in 10 | 52.5% | 26.5% |
+| 20 in 20 | 75.0% | 38.7% |
+
+After 5 in 6 followed by 14 opportunities without a shove, the frequency
+is back to 25% (5 in 20), and further folds keep it at the floor. For
+example, 5 in 26 is 20.8%, which the floor keeps at 25%.
+
+Calls are still price-driven: against a 100% jammer at 50bb the call
+share can at most approach the roughly 48% of hands with 49% equity
+against a random hand. 72o, 98s and JTs stay folds.
+
+This is an assumption-driven estimator, not range inference. It links
+a shove frequency to a top-X% range, as version 3 already does.
+`SLEIGHT_TRACE_PREFLOP=1` adds a `shove_model` object to shove
+decisions, with the baseline and adaptive widths, the counts and the
+prior strength.
+
 ### Reproduce and compare
 
 ```sh
