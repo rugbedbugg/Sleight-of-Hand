@@ -188,6 +188,12 @@ class ShoveModel:
         if not isinstance(state, dict):
             return
         key = _round_key(message)
+        self.record_start(key, state)
+
+    def record_start(self, key: str | None, state: dict) -> None:
+        """Remember starting state by round key, without a wire envelope."""
+        if not isinstance(state, dict):
+            return
         if key is None:
             return
         self._starts[key] = state
@@ -205,6 +211,15 @@ class ShoveModel:
         try:
             key = _round_key(message)
             result = message.get("result")
+        except (AttributeError, TypeError, ValueError):
+            return None
+        return self.observe_result(key, result, hero_seat)
+
+    def observe_result(
+        self, key: str | None, result: dict, hero_seat: int | None
+    ) -> ShoveObservation | None:
+        """Observe a keyed result, preserving atomicity and deduplication."""
+        try:
             if key is None or key in self.processed or not isinstance(result, dict):
                 return None
             start = self._starts.get(key)

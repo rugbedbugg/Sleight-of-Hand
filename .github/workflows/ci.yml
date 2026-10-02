@@ -25,6 +25,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The extraction regression compares against the immutable oracle.
+          fetch-depth: 0
 
       - name: Install the matrix Python with mise
         # CI-only mise.toml (not committed) selects the matrix interpreter;

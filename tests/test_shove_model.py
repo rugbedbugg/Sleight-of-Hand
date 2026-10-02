@@ -408,3 +408,47 @@ def test_trace_reports_shove_model_and_stays_decision_neutral(capsys):
     assert model["adaptive_width"] == pytest.approx(100 * 8.5 / 16, abs=1e-3)
     assert model["prior_strength"] == 10.0
     assert '"Qs"' not in json.dumps(lines) and '"Jh"' not in json.dumps(lines)
+
+
+@pytest.mark.parametrize("fault", [None, *sorted(MALFORMED)])
+def test_keyed_lifecycle_matches_envelope_compatibility_api(fault):
+    from sleight_of_hand.holdem.opponent import _round_key
+
+    start, result = _good()
+    if fault is not None:
+        start, result = MALFORMED[fault](start, result)
+    keyed, wrapped = ShoveModel(), ShoveModel()
+    if start is not None:
+        keyed.record_start(_round_key(start), start["state"])
+        wrapped.record_round_start(start)
+    for seat in (None, HERO, HERO):
+        assert keyed.observe_result(
+            _round_key(result), result.get("result"), seat
+        ) == wrapped.observe_round_result(result, seat)
+        assert keyed == wrapped
+
+
+def test_keyed_lifecycle_retains_exception_start_but_evicts_rejected_hand():
+    model = ShoveModel()
+    start, result = _good()
+    model.record_start("k", start["state"])
+    broken = copy.deepcopy(result["result"])
+    broken["action_history"][0]["action"] = []
+    assert model.observe_result("k", broken, HERO) is None
+    # This shape is rejected explicitly by parse_hand, so it consumes the start.
+    assert "k" not in model._starts
+    model.record_start("k", start["state"])
+    # Float zero passes the seat membership check but cannot index stacks.
+    # That parse exception leaves the start available for a usable result.
+    assert model.observe_result("k", result["result"], 0.0) is None
+    assert "k" in model._starts
+    assert model.observe_result("k", result["result"], HERO) is not None
+
+
+def test_keyed_lifecycle_bounds_pending_starts_and_keeps_mapping_identity():
+    model = ShoveModel()
+    for number in range(20):
+        start = {"stacks": [5000, 5000]}
+        model.record_start(str(number), start)
+        assert model._starts[str(number)] is start
+    assert list(model._starts) == [str(number) for number in range(4, 20)]
