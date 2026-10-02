@@ -15,7 +15,13 @@ def main() -> None:
     if OUTPUT.exists():
         shutil.rmtree(OUTPUT)
     OUTPUT.mkdir(parents=True)
-    for name in ("bot.py", "requirements.txt", "Dockerfile", ".dockerignore"):
+    for name in (
+        "bot.py",
+        "accounting_observer.py",
+        "requirements.txt",
+        "Dockerfile",
+        ".dockerignore",
+    ):
         shutil.copy2(ROOT / "bots" / "chipzen" / name, OUTPUT / name)
     shutil.copy2(ROOT / "LICENSE", OUTPUT / "LICENSE")
     package = OUTPUT / "sleight_of_hand"

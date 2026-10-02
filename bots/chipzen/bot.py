@@ -11,6 +11,11 @@ import sys
 from chipzen import Action, Bot, GameState
 from chipzen.client import run_bot
 
+if __package__:
+    from . import accounting_observer
+else:  # Flat staged/container runtime.
+    import accounting_observer
+
 from sleight_of_hand.holdem import agent, preflop
 from sleight_of_hand.holdem.agent import HoldemAgent
 from sleight_of_hand.holdem.decision import Decision
@@ -72,6 +77,15 @@ class SleightOfHandBot(HoldemAgent, Bot):
             trace_preflop=trace_preflop,
         )
         self._seat: int | None = None
+        self._accounting_observer = accounting_observer.from_environment()
+
+    def _observe(self, event, *args) -> None:
+        if self._accounting_observer is not None:
+            try:
+                self._accounting_observer.notify(event, *args)
+            except Exception:  # noqa: BLE001 - isolate diagnostics, not policy
+                self._accounting_observer = None
+                accounting_observer.warning()
 
     def _learn_seat(self, message: dict) -> None:
         for seat in message.get("seats", []) or []:
@@ -82,10 +96,12 @@ class SleightOfHandBot(HoldemAgent, Bot):
     def on_match_start(self, match_info: dict) -> None:
         self._learn_seat(match_info)
         super().on_match_start(match_info)
+        self._observe("match_start")
 
     def on_reconnected(self, message: dict) -> None:
         self._learn_seat(message)
         super().on_reconnected(message)
+        self._observe("reconnected")
 
     def on_round_start(self, message: dict) -> None:
         if isinstance(message, dict):
@@ -93,6 +109,7 @@ class SleightOfHandBot(HoldemAgent, Bot):
             if isinstance(state, dict):
                 self.shove_model.record_start(_round_key(message), state)
         super().on_round_start(message)
+        self._observe("round_start", message, self._seat)
 
     def on_round_result(self, message: dict) -> None:
         # Observation never raises and applies a hand entirely or not at all.
@@ -104,6 +121,11 @@ class SleightOfHandBot(HoldemAgent, Bot):
         else:
             self.shove_model.observe_result(key, result, self._seat)
         super().on_round_result(message)
+        self._observe("round_result", message)
+
+    def on_turn_result(self, message: dict) -> None:
+        super().on_turn_result(message)
+        self._observe("turn_result", message)
 
     def shove_estimate(self, context: preflop.PreflopContext) -> dict | None:
         return super().shove_estimate(context)
@@ -141,7 +163,10 @@ class SleightOfHandBot(HoldemAgent, Bot):
 
     def decide(self, state: GameState) -> Action:
         # Resolve the estimator here to retain the adapter's patchable hook.
-        return _sdk_action(super().decide(state, equity_estimator=estimate_equity))
+        self._observe("decision_state", state)
+        action = _sdk_action(super().decide(state, equity_estimator=estimate_equity))
+        self._observe("selected_action", action)
+        return action
 
 
 def main() -> None:

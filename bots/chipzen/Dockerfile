@@ -10,6 +10,7 @@ WORKDIR /bot
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY bot.py ./
+COPY accounting_observer.py ./
 COPY sleight_of_hand/ ./sleight_of_hand/
 COPY LICENSE ./
 USER 10001:10001
