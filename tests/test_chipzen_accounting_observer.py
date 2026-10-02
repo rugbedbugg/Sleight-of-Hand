@@ -1,10 +1,13 @@
 """Observation-only adapter diagnostics; no live server accounting assertions."""
 
 import copy
+import hashlib
 import io
 import json
-from contextlib import redirect_stderr
+import subprocess
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import patch
 
 import pytest
@@ -167,9 +170,11 @@ def test_exactly_one_policy_call_and_same_action_object(monkeypatch, tmp_path):
     policy.assert_called_once()
 
 
+@pytest.mark.parametrize("stdout", [False, True])
 def test_allowlist_excludes_secrets_names_cards_and_unknown_fields(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, capsys, stdout
 ):
+    monkeypatch.setenv("SLEIGHT_CHIPZEN_ACCOUNTING_STDOUT", "1" if stdout else "0")
     sentinels = [
         "SECRET_TOKEN_SENTINEL",
         "SECRET_TICKET_SENTINEL",
@@ -229,6 +234,13 @@ def test_allowlist_excludes_secrets_names_cards_and_unknown_fields(
     ]:
         assert secret not in text
     doc = captured(tmp_path)
+    emitted = capsys.readouterr().out
+    if stdout:
+        assert recover_export(emitted) == text
+        for secret in sentinels + ["Ah", "Kd", "hole_cards", "deck_reveal"]:
+            assert secret not in emitted
+    else:
+        assert emitted == ""
     turn = next(e["data"] for e in doc["events"] if e["event"] == "turn_result")
     assert turn == {
         "seat": 0,
@@ -363,9 +375,11 @@ def test_bounded_capture_keeps_final_accounting(monkeypatch, tmp_path, bound):
     assert doc["events"][-1]["data"]["stacks"] == {"0": 600, "1": 6100}
 
 
+@pytest.mark.parametrize("stdout", [False, True])
 def test_mixed_sequence_exact_behavior_rng_model_and_lifecycle_parity(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, stdout
 ):
+    monkeypatch.setenv("SLEIGHT_CHIPZEN_ACCOUNTING_STDOUT", "1" if stdout else "0")
     disabled = make_bot(monkeypatch, tmp_path, False)
     enabled = make_bot(monkeypatch, tmp_path)
     match = {"seats": [{"seat": 0, "is_self": True}, {"seat": 1}]}
@@ -514,3 +528,238 @@ def test_seat_pending_eviction_and_malformed_lifecycle_parity(
     ):
         assert outcome(disabled, method, argument) == outcome(enabled, method, argument)
     assert not list(tmp_path.iterdir())
+
+
+# Transport characterization: reconstruct exactly, never accept partial chunks.
+STDOUT = "SLEIGHT_CHIPZEN_ACCOUNTING_STDOUT"
+
+
+def recover_export(text):
+    lines = text.splitlines()
+    prefix = observer.STDOUT_PREFIX
+    assert lines and all(
+        len(line.encode("ascii")) + 1 <= observer.STDOUT_LINE_BYTES for line in lines
+    )
+    if lines[0].startswith(prefix + ":"):
+        assert len(lines) == 1
+        payload = lines[0][len(prefix) + 1 :]
+    else:
+        assert lines[-1].startswith(prefix + " SHA256 ")
+        pieces = []
+        for index, line in enumerate(lines[:-1], 1):
+            framing, piece = line[len(prefix) + 1 :].split(" ", 1)
+            assert line.startswith(prefix + " ")
+            assert framing == f"{index}/{len(lines) - 1}"
+            pieces.append(piece)
+        payload = "".join(pieces)
+        assert (
+            hashlib.sha256(payload.encode("ascii")).hexdigest() == lines[-1].split()[-1]
+        )
+    json.loads(payload)
+    return payload + "\n"
+
+
+@pytest.mark.parametrize("mode", ["disabled", "file", "stdout", "both"])
+def test_export_opt_in_modes_and_one_capture(monkeypatch, tmp_path, capsys, mode):
+    monkeypatch.setenv(STDOUT, "1" if mode in ("disabled", "stdout", "both") else "0")
+    bot = make_bot(monkeypatch, tmp_path, enabled=mode != "disabled")
+    if mode == "stdout":
+        # Construct again with no file path; stdout is an independent opt-in.
+        monkeypatch.delenv(LOG)
+        bot = SleightOfHandBot(seed=17)
+    result = begin(bot)
+    bot.decide(state())
+    bot.on_turn_result({"details": {"seat": 0, "action": "call", "amount": 600}})
+    assert capsys.readouterr().out == ""  # No export on the decision path.
+    bot.on_round_result(result)
+    text = capsys.readouterr().out
+    if mode in ("stdout", "both"):
+        recovered = recover_export(text)
+        assert json.loads(recovered)["classification"] == "observation_only"
+        assert not bot._accounting_observer.armed
+        if mode == "both":
+            assert recovered.encode() == (tmp_path / "capture.json").read_bytes()
+    else:
+        assert text == ""
+    assert (tmp_path / "capture.json").exists() == (mode in ("file", "both"))
+    bot.on_round_result(result)
+    start, result = messages(2)
+    bot.on_round_start(start)
+    bot.decide(state(number=2))
+    bot.on_round_result(result)
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    "size",
+    [
+        20,
+        observer.STDOUT_LINE_BYTES - len(observer.STDOUT_PREFIX) - 2,
+        observer.STDOUT_LINE_BYTES - len(observer.STDOUT_PREFIX) - 1,
+        observer.STDOUT_MAX_BYTES,
+    ],
+)
+def test_export_framing_bounds_and_exact_reassembly(size):
+    payload = '{"value":"' + "0" * (size - 12) + '"}'
+    assert len(payload) == size
+    output = io.StringIO()
+    with redirect_stdout(output):
+        observer.AccountingObserver._export_stdout(payload + "\n")
+    assert recover_export(output.getvalue()) == payload + "\n"
+    if len(observer.STDOUT_PREFIX) + size + 2 <= observer.STDOUT_LINE_BYTES:
+        assert output.getvalue().startswith(observer.STDOUT_PREFIX + ":")
+    else:
+        assert " SHA256 " in output.getvalue()
+
+
+def test_damaged_chunked_export_is_detectably_incomplete():
+    output = io.StringIO()
+    with redirect_stdout(output):
+        observer.AccountingObserver._export_stdout(
+            json.dumps({"value": "0" * 5000}) + "\n"
+        )
+    lines = output.getvalue().splitlines(True)
+    for damaged in (
+        lines[:-1],
+        lines[1:],
+        [lines[0], *lines],
+        [lines[1], lines[0], *lines[2:]],
+    ):
+        with pytest.raises(AssertionError):
+            recover_export("".join(damaged))
+
+
+@pytest.mark.parametrize(
+    "failure", ["write", "encoding", "flush", "short_write", "oversize"]
+)
+def test_stdout_failure_preserves_file_and_full_gameplay(
+    monkeypatch, tmp_path, capsys, failure
+):
+    disabled = make_bot(monkeypatch, tmp_path, False)
+    monkeypatch.setenv(STDOUT, "1")
+    enabled = make_bot(monkeypatch, tmp_path)
+    result = begin(disabled)
+    begin(enabled)
+    assert outcome(disabled, "decide", state()) == outcome(enabled, "decide", state())
+    if failure == "oversize":
+        monkeypatch.setattr(observer, "STDOUT_MAX_BYTES", 1)
+        stream = io.StringIO()
+    else:
+
+        class BrokenStream(io.StringIO):
+            def write(self, text):
+                if failure == "encoding":
+                    raise UnicodeEncodeError(
+                        "ascii", "x", 0, 1, "PRIVATE_CARD_SENTINEL"
+                    )
+                if failure == "write":
+                    raise OSError("SECRET_TOKEN_SENTINEL")
+                if failure == "short_write":
+                    return 0
+                return super().write(text)
+
+            def flush(self):
+                if failure == "flush":
+                    raise OSError("SECRET_TICKET_SENTINEL")
+
+        stream = BrokenStream()
+    disabled.on_round_result(copy.deepcopy(result))
+    with redirect_stdout(stream):
+        enabled.on_round_result(copy.deepcopy(result))
+    assert snapshot(disabled) == snapshot(enabled)
+    assert (tmp_path / "capture.json").exists()
+    assert not enabled._accounting_observer.armed
+    assert outcome(disabled, "decide", state(number=2)) == outcome(
+        enabled, "decide", state(number=2)
+    )
+    enabled.on_round_result(result)
+    diagnostic = capsys.readouterr()
+    assert diagnostic.err.count("[accounting observer]") == 1
+    assert "SENTINEL" not in diagnostic.err and diagnostic.out == ""
+    if failure in ("oversize", "write", "encoding", "short_write"):
+        assert stream.getvalue() == ""
+
+
+def test_stdout_absolute_size_bound_rejects_before_writing():
+    payload = json.dumps({"value": "0" * observer.STDOUT_MAX_BYTES}) + "\n"
+    output = io.StringIO()
+    with redirect_stdout(output), pytest.raises(ValueError, match="stdout bound"):
+        observer.AccountingObserver._export_stdout(payload)
+    assert output.getvalue() == ""
+
+
+@pytest.mark.parametrize("failure", ["config", "write"])
+def test_file_failure_does_not_block_stdout(monkeypatch, tmp_path, capsys, failure):
+    monkeypatch.setenv(STDOUT, "1")
+    if failure == "config":
+        monkeypatch.setenv(FLAG, "1")
+        monkeypatch.setenv(LOG, str(tmp_path / "absent" / "capture.json"))
+        bot = SleightOfHandBot(seed=17)
+    else:
+        bot = make_bot(monkeypatch, tmp_path)
+    result = begin(bot)
+    bot.decide(state())
+    if failure == "write":
+        with patch.object(
+            Path, "open", side_effect=PermissionError("SECRET_TOKEN_SENTINEL")
+        ):
+            bot.on_round_result(result)
+    else:
+        bot.on_round_result(result)
+    outputs = capsys.readouterr()
+    assert json.loads(recover_export(outputs.out))["schema_version"] == 1
+    assert outputs.err.count("[accounting observer]") == 1
+    assert "SENTINEL" not in outputs.err
+    assert not (tmp_path / "capture.json").exists()
+
+
+def test_stdout_transport_not_called_during_decide(monkeypatch, tmp_path):
+    monkeypatch.setenv(STDOUT, "1")
+    bot = make_bot(monkeypatch, tmp_path)
+    result = begin(bot)
+    with patch.object(bot._accounting_observer, "_export_stdout") as export:
+        for case in FIXTURES:
+            bot.decide(state(case))
+        export.assert_not_called()
+        bot.on_round_result(result)
+        export.assert_called_once()
+        assert (
+            export.call_args.args[0].encode()
+            == (tmp_path / "capture.json").read_bytes()
+        )
+
+
+@pytest.mark.parametrize("stdout", [False, True])
+def test_file_bytes_match_canonical_file_only_oracle(
+    monkeypatch, tmp_path, capsys, stdout
+):
+    """The transport extension must not change the existing capture at all."""
+    source = subprocess.check_output(
+        [
+            "git",
+            "show",
+            "b319c6739e7b348972b7d85e90f82bef97b13d11:bots/chipzen/accounting_observer.py",
+        ],
+        text=True,
+    )
+    legacy = ModuleType("canonical_accounting_observer")
+    exec(compile(source, "canonical_observer", "exec"), legacy.__dict__)  # noqa: S102 - immutable repository oracle
+    baseline = make_bot(monkeypatch, tmp_path, False)
+    baseline._accounting_observer = legacy.AccountingObserver(
+        tmp_path / "baseline.json"
+    )
+    monkeypatch.setenv(STDOUT, "1" if stdout else "0")
+    current = make_bot(monkeypatch, tmp_path)
+    result = begin(baseline)
+    begin(current)
+    assert outcome(baseline, "decide", state()) == outcome(current, "decide", state())
+    baseline.on_round_result(copy.deepcopy(result))
+    current.on_round_result(copy.deepcopy(result))
+    assert snapshot(baseline) == snapshot(current)
+    expected = (tmp_path / "baseline.json").read_bytes()
+    assert (tmp_path / "capture.json").read_bytes() == expected
+    emitted = capsys.readouterr().out
+    if stdout:
+        assert recover_export(emitted).encode() == expected
+    else:
+        assert emitted == ""

@@ -8,6 +8,7 @@ semantics. A trigger does not establish that unmatched chips exist.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -37,6 +38,13 @@ RESULT_RESERVE = 16384
 MAX_HISTORY = 64
 MAX_SEATS = 10
 
+# The SDK manual documents a 2 MiB total log cap, not a per-line guarantee.
+# Keep lines <= 2 KiB; a full observer capture can exceed a single log line.
+STDOUT_PREFIX = "SOH_ACCOUNTING_CAPTURE_V1"
+STDOUT_MAX_BYTES = MAX_BYTES + 1024  # Final JSON only; do not enlarge the buffer.
+STDOUT_LINE_BYTES = 2048
+STDOUT_CHUNK_BYTES = STDOUT_LINE_BYTES - 64  # Room for prefix and chunk numbers.
+
 
 def warning() -> None:
     # Never include paths, exception text, or payload values in diagnostics.
@@ -50,17 +58,26 @@ def from_environment():
     if os.environ.get("SLEIGHT_CHIPZEN_ACCOUNTING_OBSERVER") != "1":
         return None
     try:
+        stdout = os.environ.get("SLEIGHT_CHIPZEN_ACCOUNTING_STDOUT") == "1"
         value = os.environ.get("SLEIGHT_CHIPZEN_ACCOUNTING_LOG", "")
-        if not value or len(value) > 4096:
-            raise ValueError
-        path = Path(value)
-        if (
-            path.exists()
-            or not path.parent.is_dir()
-            or not os.access(path.parent, os.W_OK)
-        ):
-            raise ValueError
-        return AccountingObserver(path)
+        path = None
+        if value or not stdout:
+            try:
+                if not value or len(value) > 4096:
+                    raise ValueError
+                candidate = Path(value)
+                if (
+                    candidate.exists()
+                    or not candidate.parent.is_dir()
+                    or not os.access(candidate.parent, os.W_OK)
+                ):
+                    raise ValueError
+                path = candidate
+            except Exception:  # Sinks are independent.
+                if not stdout:
+                    raise
+                warning()
+        return AccountingObserver(path, stdout=stdout)
     except Exception:  # noqa: BLE001 - diagnostics must fail open
         warning()
         return None
@@ -99,8 +116,9 @@ def correlation(message, nested):
 
 
 class AccountingObserver:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path | None, stdout: bool = False):
         self.path = path
+        self.stdout = stdout
         self.armed = True
         self.alias = 0
         self.key = None
@@ -369,5 +387,51 @@ class AccountingObserver:
             json.dumps(capture, sort_keys=True, separators=(",", ":"), allow_nan=False)
             + "\n"
         )
-        with self.path.open("x", encoding="utf-8") as stream:
-            stream.write(encoded)
+        failed = False
+        try:
+            if self.path is not None:
+                with self.path.open("x", encoding="utf-8") as stream:
+                    stream.write(encoded)
+        except Exception:  # A failed file must not block stdout.
+            if not self.stdout:
+                raise  # Preserve the existing file-only failure path.
+            failed = True
+        if self.stdout:
+            try:
+                self._export_stdout(encoded)
+            except Exception:  # noqa: BLE001 - never affect gameplay or retry
+                failed = True
+        if failed:
+            warning()
+
+    @staticmethod
+    def _export_stdout(encoded: str) -> None:
+        """Frame only the final, already sanitized file serialization.
+
+        Reassemble numbered payload chunks in order, verify SHA-256 over their
+        ASCII bytes (no newline), then parse JSON. Append one newline to recover
+        the exact file bytes. Reject missing/duplicate chunks or missing digest.
+        No raw state, second sanitizer, or policy work enters this transport.
+        """
+        payload = encoded.removesuffix("\n")
+        raw = payload.encode("ascii")  # json.dumps uses ensure_ascii=True.
+        if len(raw) > STDOUT_MAX_BYTES:
+            raise ValueError("capture exceeds stdout bound")
+        single = f"{STDOUT_PREFIX}:{payload}\n"
+        if len(single) <= STDOUT_LINE_BYTES:
+            framed = single
+        else:
+            chunks = [
+                payload[i : i + STDOUT_CHUNK_BYTES]
+                for i in range(0, len(payload), STDOUT_CHUNK_BYTES)
+            ]
+            framed = "".join(
+                f"{STDOUT_PREFIX} {i}/{len(chunks)} {chunk}\n"
+                for i, chunk in enumerate(chunks, 1)
+            )
+            framed += f"{STDOUT_PREFIX} SHA256 {hashlib.sha256(raw).hexdigest()}\n"
+        # Construct and validate before touching stdout. A failed/short write
+        # may leave incomplete framing; readers must reject it. Never retry.
+        if sys.stdout.write(framed) != len(framed):
+            raise OSError("short stdout write")
+        sys.stdout.flush()
