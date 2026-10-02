@@ -1,0 +1,1531 @@
+{
+  "baseline_commit": "e53ea4ed9363627f2acf0254355653fc94345279",
+  "seed": 17,
+  "samples": 128,
+  "params": {
+    "value_bet_threshold": 0.55,
+    "call_threshold": 0.35,
+    "bluff_freq": 0.15,
+    "aggression": 0.8,
+    "steepness": 8.0
+  },
+  "rng_hash_format": "SHA256(UTF-8 repr(random.Random.getstate()))",
+  "initial_rng_hash": "fd62d0006eaffde022ecfb0ce0af98d741d50ad8df49e47abd20cbee8616e448",
+  "probability_keys": "CALL represents check or call; FOLD and RAISE use the core action names.",
+  "covering_shove": {
+    "assumption": "Synthetic state assuming unmatched villain chips remain included in pot.",
+    "live_reachability": "INCONCLUSIVE",
+    "pot_before_wager": 200,
+    "villain_wager": 5900,
+    "supplied_pot": 6100,
+    "affordable_call": 600,
+    "unmatched": 5300,
+    "contestable_pot": 800,
+    "legacy_modeled_price": 0.08955223880597014,
+    "contestable_reference_price": 0.42857142857142855
+  },
+  "fixtures": [
+    {
+      "id": "F01",
+      "name": "dry_underpair",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["4s", "4h"],
+        "board": ["Kc", "7d", "2h"],
+        "pot": 300,
+        "your_stack": 2000,
+        "opponent_stacks": [2000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 2000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.58984375,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.4736372681896661,
+          "RAISE": 0.5263627318103339
+        },
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": 340
+      }
+    },
+    {
+      "id": "F02",
+      "name": "connected_gutshot",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["As", "Ks"],
+        "board": ["Jh", "Th", "9c"],
+        "pot": 300,
+        "your_stack": 2000,
+        "opponent_stacks": [2000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 2000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.58984375,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.4736372681896661,
+          "RAISE": 0.5263627318103339
+        },
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": 340
+      }
+    },
+    {
+      "id": "F03",
+      "name": "short_nut_flush_draw",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["As", "5s"],
+        "board": ["Ks", "9s", "2d"],
+        "pot": 600,
+        "your_stack": 200,
+        "opponent_stacks": [200],
+        "your_seat": 0,
+        "dealer_seat": 1,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 200,
+        "valid_actions": ["check", "raise"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.63671875,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.41657960149761364,
+          "RAISE": 0.5834203985023864
+        },
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": 200
+      }
+    },
+    {
+      "id": "F04",
+      "name": "deep_turn_quads",
+      "state": {
+        "phase": "turn",
+        "hole_cards": ["7s", "7h"],
+        "board": ["7c", "7d", "2s", "3s"],
+        "pot": 500,
+        "your_stack": 10000,
+        "opponent_stacks": [10000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 10000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 1.0,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.21728804582496286,
+          "RAISE": 0.7827119541750371
+        },
+        "action": {
+          "action": "raise",
+          "amount": 500
+        },
+        "stderr": "",
+        "rng_hash": "de3b2fcb0ee7fa1988d07c3cf8a4536c7fdd0b23623722365ff72f97f03e08ad",
+        "mapped_raise_to": 500
+      }
+    },
+    {
+      "id": "F05",
+      "name": "river_nut_spade_blocker",
+      "state": {
+        "phase": "river",
+        "hole_cards": ["As", "Qh"],
+        "board": ["Ks", "Js", "8s", "5c", "2d"],
+        "pot": 300,
+        "your_stack": 2000,
+        "opponent_stacks": [2000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 2000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.3671875,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.727744584574843,
+          "RAISE": 0.27225541542515697
+        },
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": 340
+      }
+    },
+    {
+      "id": "F06",
+      "name": "river_no_spade_blocker",
+      "state": {
+        "phase": "river",
+        "hole_cards": ["Ah", "Qh"],
+        "board": ["Ks", "Js", "8s", "5c", "2d"],
+        "pot": 300,
+        "your_stack": 2000,
+        "opponent_stacks": [2000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 2000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.3671875,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.727744584574843,
+          "RAISE": 0.27225541542515697
+        },
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": 340
+      }
+    },
+    {
+      "id": "F07",
+      "name": "price_quarter",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c"],
+        "pot": 375,
+        "your_stack": 2000,
+        "opponent_stacks": [1925],
+        "your_seat": 0,
+        "dealer_seat": 1,
+        "to_call": 75,
+        "min_raise": 150,
+        "max_raise": 2000,
+        "valid_actions": ["fold", "call", "raise"],
+        "action_history": [
+          {"seat": 0, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 1, "action": "raise", "amount": 75, "phase": "flop"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.36328125,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.18333333333333332,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.6898092875245849,
+          "FOLD": 0.1635030805038497,
+          "RAISE": 0.1466876319715654
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": 510
+      }
+    },
+    {
+      "id": "F08",
+      "name": "price_half",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c"],
+        "pot": 450,
+        "your_stack": 2000,
+        "opponent_stacks": [1850],
+        "your_seat": 0,
+        "dealer_seat": 1,
+        "to_call": 150,
+        "min_raise": 300,
+        "max_raise": 2000,
+        "valid_actions": ["fold", "call", "raise"],
+        "action_history": [
+          {"seat": 0, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 1, "action": "raise", "amount": 150, "phase": "flop"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.36328125,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.26666666666666666,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.5837949274435882,
+          "FOLD": 0.2695174405848464,
+          "RAISE": 0.1466876319715654
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": 780
+      }
+    },
+    {
+      "id": "F09",
+      "name": "price_pot",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c"],
+        "pot": 600,
+        "your_stack": 2000,
+        "opponent_stacks": [1700],
+        "your_seat": 0,
+        "dealer_seat": 1,
+        "to_call": 300,
+        "min_raise": 600,
+        "max_raise": 2000,
+        "valid_actions": ["fold", "call", "raise"],
+        "action_history": [
+          {"seat": 0, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 1, "action": "raise", "amount": 300, "phase": "flop"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.36328125,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.44930099457364375,
+          "FOLD": 0.4040113734547908,
+          "RAISE": 0.1466876319715654
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": 1320
+      }
+    },
+    {
+      "id": "F10",
+      "name": "price_double",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c"],
+        "pot": 900,
+        "your_stack": 2000,
+        "opponent_stacks": [1400],
+        "your_seat": 0,
+        "dealer_seat": 1,
+        "to_call": 600,
+        "min_raise": 1200,
+        "max_raise": 2000,
+        "valid_actions": ["fold", "call", "raise"],
+        "action_history": [
+          {"seat": 0, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 1, "action": "raise", "amount": 600, "phase": "flop"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.36328125,
+        "params": {
+          "value_bet_threshold": 0.6166666666666667,
+          "call_threshold": 0.4166666666666667,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.358060718455379,
+          "FOLD": 0.5488284469977663,
+          "RAISE": 0.09311083454685468
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": 2000
+      }
+    },
+    {
+      "id": "F11",
+      "name": "flop_cover_raw",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c"],
+        "pot": 6100,
+        "your_stack": 600,
+        "opponent_stacks": [0],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 5900,
+        "min_raise": 0,
+        "max_raise": 0,
+        "valid_actions": ["fold", "call"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "call", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "preflop"},
+          {"seat": 1, "action": "raise", "amount": 5900, "phase": "flop"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "known_defect",
+      "note": "Synthetic state assuming unmatched villain chips remain included in pot. Model-only confirmed; live Chipzen reachability is inconclusive.",
+      "expected": {
+        "equity": 0.36328125,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.1062189054726368,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.8866026366665759,
+          "FOLD": 0.11339736333342405
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": null
+      }
+    },
+    {
+      "id": "F12",
+      "name": "flop_cover_capped",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c"],
+        "pot": 6100,
+        "your_stack": 600,
+        "opponent_stacks": [0],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 600,
+        "min_raise": 0,
+        "max_raise": 0,
+        "valid_actions": ["fold", "call"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "call", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "preflop"},
+          {"seat": 1, "action": "raise", "amount": 5900, "phase": "flop"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "known_defect",
+      "note": "Synthetic state assuming unmatched villain chips remain included in pot. Model-only confirmed; live Chipzen reachability is inconclusive.",
+      "expected": {
+        "equity": 0.36328125,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.1062189054726368,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.8866026366665759,
+          "FOLD": 0.11339736333342405
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": null
+      }
+    },
+    {
+      "id": "F13",
+      "name": "turn_cover_raw",
+      "state": {
+        "phase": "turn",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c", "7h"],
+        "pot": 6100,
+        "your_stack": 600,
+        "opponent_stacks": [0],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 5900,
+        "min_raise": 0,
+        "max_raise": 0,
+        "valid_actions": ["fold", "call"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "call", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 0, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 1, "action": "raise", "amount": 5900, "phase": "turn"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "known_defect",
+      "note": "Synthetic state assuming unmatched villain chips remain included in pot. Model-only confirmed; live Chipzen reachability is inconclusive.",
+      "expected": {
+        "equity": 0.26953125,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.1062189054726368,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.7869266813220535,
+          "FOLD": 0.21307331867794654
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "de3b2fcb0ee7fa1988d07c3cf8a4536c7fdd0b23623722365ff72f97f03e08ad",
+        "mapped_raise_to": null
+      }
+    },
+    {
+      "id": "F14",
+      "name": "turn_cover_capped",
+      "state": {
+        "phase": "turn",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c", "7h"],
+        "pot": 6100,
+        "your_stack": 600,
+        "opponent_stacks": [0],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 600,
+        "min_raise": 0,
+        "max_raise": 0,
+        "valid_actions": ["fold", "call"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "call", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 0, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 1, "action": "raise", "amount": 5900, "phase": "turn"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "known_defect",
+      "note": "Synthetic state assuming unmatched villain chips remain included in pot. Model-only confirmed; live Chipzen reachability is inconclusive.",
+      "expected": {
+        "equity": 0.26953125,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.1062189054726368,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.7869266813220535,
+          "FOLD": 0.21307331867794654
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "de3b2fcb0ee7fa1988d07c3cf8a4536c7fdd0b23623722365ff72f97f03e08ad",
+        "mapped_raise_to": null
+      }
+    },
+    {
+      "id": "F15",
+      "name": "river_cover_raw",
+      "state": {
+        "phase": "river",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c", "7h", "4d"],
+        "pot": 6100,
+        "your_stack": 600,
+        "opponent_stacks": [0],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 5900,
+        "min_raise": 0,
+        "max_raise": 0,
+        "valid_actions": ["fold", "call"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "call", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 0, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "turn"},
+          {"seat": 0, "action": "check", "amount": 0, "phase": "turn"},
+          {"seat": 1, "action": "raise", "amount": 5900, "phase": "river"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "known_defect",
+      "note": "Synthetic state assuming unmatched villain chips remain included in pot. Model-only confirmed; live Chipzen reachability is inconclusive.",
+      "expected": {
+        "equity": 0.1015625,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.1062189054726368,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.49068826581949154,
+          "FOLD": 0.5093117341805085
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": null
+      }
+    },
+    {
+      "id": "F16",
+      "name": "river_cover_capped",
+      "state": {
+        "phase": "river",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c", "7h", "4d"],
+        "pot": 6100,
+        "your_stack": 600,
+        "opponent_stacks": [0],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 600,
+        "min_raise": 0,
+        "max_raise": 0,
+        "valid_actions": ["fold", "call"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "call", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 0, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "turn"},
+          {"seat": 0, "action": "check", "amount": 0, "phase": "turn"},
+          {"seat": 1, "action": "raise", "amount": 5900, "phase": "river"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "known_defect",
+      "note": "Synthetic state assuming unmatched villain chips remain included in pot. Model-only confirmed; live Chipzen reachability is inconclusive.",
+      "expected": {
+        "equity": 0.1015625,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.1062189054726368,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.49068826581949154,
+          "FOLD": 0.5093117341805085
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": null
+      }
+    },
+    {
+      "id": "F17",
+      "name": "hero_covers_short_shove",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c"],
+        "pot": 800,
+        "your_stack": 2000,
+        "opponent_stacks": [0],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 600,
+        "min_raise": 0,
+        "max_raise": 0,
+        "valid_actions": ["fold", "call"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.36328125,
+        "params": {
+          "value_bet_threshold": 0.6452380952380953,
+          "call_threshold": 0.4452380952380952,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.3417163834254845,
+          "FOLD": 0.6582836165745155
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": null
+      }
+    },
+    {
+      "id": "F18",
+      "name": "equal_short_shove",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["9s", "8s"],
+        "board": ["As", "Kd", "2c"],
+        "pot": 800,
+        "your_stack": 600,
+        "opponent_stacks": [0],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 600,
+        "min_raise": 0,
+        "max_raise": 0,
+        "valid_actions": ["fold", "call"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.36328125,
+        "params": {
+          "value_bet_threshold": 0.6452380952380953,
+          "call_threshold": 0.4452380952380952,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.3417163834254845,
+          "FOLD": 0.6582836165745155
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": null
+      }
+    },
+    {
+      "id": "F19",
+      "name": "line_cbet_bet",
+      "state": {
+        "phase": "river",
+        "hole_cards": ["As", "Kh"],
+        "board": ["Kc", "7d", "2h", "9s", "4d"],
+        "pot": 2000,
+        "your_stack": 9000,
+        "opponent_stacks": [9000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 9000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "raise", "amount": 300, "phase": "preflop"},
+          {"seat": 1, "action": "call", "amount": 200, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 0, "action": "raise", "amount": 200, "phase": "flop"},
+          {"seat": 1, "action": "call", "amount": 200, "phase": "flop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "turn"},
+          {"seat": 0, "action": "raise", "amount": 500, "phase": "turn"},
+          {"seat": 1, "action": "call", "amount": 500, "phase": "turn"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "river"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.921875,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.23156930032766643,
+          "RAISE": 0.7684306996723336
+        },
+        "action": {
+          "action": "raise",
+          "amount": 1700
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": 1700
+      }
+    },
+    {
+      "id": "F20",
+      "name": "line_hero_preflop_caller",
+      "state": {
+        "phase": "river",
+        "hole_cards": ["As", "Kh"],
+        "board": ["Kc", "7d", "2h", "9s", "4d"],
+        "pot": 2000,
+        "your_stack": 9000,
+        "opponent_stacks": [9000],
+        "your_seat": 0,
+        "dealer_seat": 1,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 9000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [
+          {"seat": 1, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 0, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 1, "action": "raise", "amount": 300, "phase": "preflop"},
+          {"seat": 0, "action": "call", "amount": 200, "phase": "preflop"},
+          {"seat": 0, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 1, "action": "raise", "amount": 200, "phase": "flop"},
+          {"seat": 0, "action": "call", "amount": 200, "phase": "flop"},
+          {"seat": 0, "action": "check", "amount": 0, "phase": "turn"},
+          {"seat": 1, "action": "raise", "amount": 500, "phase": "turn"},
+          {"seat": 0, "action": "call", "amount": 500, "phase": "turn"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.921875,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.23156930032766643,
+          "RAISE": 0.7684306996723336
+        },
+        "action": {
+          "action": "raise",
+          "amount": 1700
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": 1700
+      }
+    },
+    {
+      "id": "F21",
+      "name": "line_limp_pot",
+      "state": {
+        "phase": "river",
+        "hole_cards": ["As", "Kh"],
+        "board": ["Kc", "7d", "2h", "9s", "4d"],
+        "pot": 2000,
+        "your_stack": 9000,
+        "opponent_stacks": [9000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 9000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "call", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 0, "action": "raise", "amount": 400, "phase": "flop"},
+          {"seat": 1, "action": "call", "amount": 400, "phase": "flop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "turn"},
+          {"seat": 0, "action": "raise", "amount": 500, "phase": "turn"},
+          {"seat": 1, "action": "call", "amount": 500, "phase": "turn"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "river"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.921875,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.23156930032766643,
+          "RAISE": 0.7684306996723336
+        },
+        "action": {
+          "action": "raise",
+          "amount": 1700
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": 1700
+      }
+    },
+    {
+      "id": "F22",
+      "name": "line_threebet_pot",
+      "state": {
+        "phase": "river",
+        "hole_cards": ["As", "Kh"],
+        "board": ["Kc", "7d", "2h", "9s", "4d"],
+        "pot": 2000,
+        "your_stack": 9000,
+        "opponent_stacks": [9000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 9000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "raise", "amount": 150, "phase": "preflop"},
+          {"seat": 1, "action": "raise", "amount": 400, "phase": "preflop"},
+          {"seat": 0, "action": "call", "amount": 250, "phase": "preflop"},
+          {"seat": 1, "action": "raise", "amount": 300, "phase": "flop"},
+          {"seat": 0, "action": "call", "amount": 300, "phase": "flop"},
+          {"seat": 1, "action": "raise", "amount": 300, "phase": "turn"},
+          {"seat": 0, "action": "call", "amount": 300, "phase": "turn"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "river"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": 0.921875,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.23156930032766643,
+          "RAISE": 0.7684306996723336
+        },
+        "action": {
+          "action": "raise",
+          "amount": 1700
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": 1700
+      }
+    },
+    {
+      "id": "F23",
+      "name": "button_only_probe",
+      "state": {
+        "phase": "river",
+        "hole_cards": ["As", "Kh"],
+        "board": ["Kc", "7d", "2h", "9s", "4d"],
+        "pot": 2000,
+        "your_stack": 9000,
+        "opponent_stacks": [9000],
+        "your_seat": 0,
+        "dealer_seat": 1,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 9000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "raise", "amount": 300, "phase": "preflop"},
+          {"seat": 1, "action": "call", "amount": 200, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 0, "action": "raise", "amount": 200, "phase": "flop"},
+          {"seat": 1, "action": "call", "amount": 200, "phase": "flop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "turn"},
+          {"seat": 0, "action": "raise", "amount": 500, "phase": "turn"},
+          {"seat": 1, "action": "call", "amount": 500, "phase": "turn"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "river"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "F19 with only dealer_seat changed. Inconsistent with blind history; isolates direct position-field consumption.",
+      "expected": {
+        "equity": 0.921875,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.23156930032766643,
+          "RAISE": 0.7684306996723336
+        },
+        "action": {
+          "action": "raise",
+          "amount": 1700
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": 1700
+      }
+    },
+    {
+      "id": "F24",
+      "name": "street_label_only_probe",
+      "state": {
+        "phase": "turn",
+        "hole_cards": ["As", "Kh"],
+        "board": ["Kc", "7d", "2h", "9s", "4d"],
+        "pot": 2000,
+        "your_stack": 9000,
+        "opponent_stacks": [9000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 9000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [
+          {"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+          {"seat": 1, "action": "post_big_blind", "amount": 100, "phase": "preflop"},
+          {"seat": 0, "action": "raise", "amount": 300, "phase": "preflop"},
+          {"seat": 1, "action": "call", "amount": 200, "phase": "preflop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "flop"},
+          {"seat": 0, "action": "raise", "amount": 200, "phase": "flop"},
+          {"seat": 1, "action": "call", "amount": 200, "phase": "flop"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "turn"},
+          {"seat": 0, "action": "raise", "amount": 500, "phase": "turn"},
+          {"seat": 1, "action": "call", "amount": 500, "phase": "turn"},
+          {"seat": 1, "action": "check", "amount": 0, "phase": "river"}
+        ],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "current_limitation",
+      "note": "F19 with phase=turn but five-card board retained. Deliberately inconsistent; isolates phase-label consumption.",
+      "expected": {
+        "equity": 0.921875,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.23156930032766643,
+          "RAISE": 0.7684306996723336
+        },
+        "action": {
+          "action": "raise",
+          "amount": 1700
+        },
+        "stderr": "",
+        "rng_hash": "908248eb1623df16076d185823358ded38ae566b4d437ac62dfbd9a675319fa6",
+        "mapped_raise_to": 1700
+      }
+    },
+    {
+      "id": "F25",
+      "name": "single_check",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["As", "Kh"],
+        "board": ["Kc", "7d", "2h"],
+        "pot": 300,
+        "your_stack": 2000,
+        "opponent_stacks": [2000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 0,
+        "max_raise": 0,
+        "valid_actions": ["check"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "synthetic characterization input",
+      "expected": {
+        "equity": null,
+        "params": null,
+        "probs": null,
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "fd62d0006eaffde022ecfb0ce0af98d741d50ad8df49e47abd20cbee8616e448",
+        "mapped_raise_to": null
+      }
+    },
+    {
+      "id": "F26",
+      "name": "invalid_card_fallback",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["invalid", "Kh"],
+        "board": ["Kc", "7d", "2h"],
+        "pot": 300,
+        "your_stack": 2000,
+        "opponent_stacks": [2000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 0,
+        "min_raise": 100,
+        "max_raise": 2000,
+        "valid_actions": ["check", "raise"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "Invalid card supplied directly to bot, after SDK boundary; should warn and check with zero RNG draws.",
+      "expected": {
+        "equity": null,
+        "params": null,
+        "probs": null,
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "Hold'em state unavailable: invalid card: 'invalid'\n",
+        "rng_hash": "fd62d0006eaffde022ecfb0ce0af98d741d50ad8df49e47abd20cbee8616e448",
+        "mapped_raise_to": 340
+      }
+    },
+    {
+      "id": "F27",
+      "name": "min_exceeds_max",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["As", "Kh"],
+        "board": ["Kc", "7d", "2h"],
+        "pot": 300,
+        "your_stack": 80,
+        "opponent_stacks": [2000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 50,
+        "min_raise": 200,
+        "max_raise": 80,
+        "valid_actions": ["fold", "call", "raise"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "Boundary stress: min>max, even though current official docs describe server-clamped minimum.",
+      "expected": {
+        "equity": 0.890625,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.1595238095238095,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.2484948527785648,
+          "FOLD": 0.0007164925771427445,
+          "RAISE": 0.7507886546442925
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": 80
+      }
+    },
+    {
+      "id": "F28",
+      "name": "zero_max_raise",
+      "state": {
+        "phase": "flop",
+        "hole_cards": ["As", "Kh"],
+        "board": ["Kc", "7d", "2h"],
+        "pot": 300,
+        "your_stack": 2000,
+        "opponent_stacks": [2000],
+        "your_seat": 0,
+        "dealer_seat": 0,
+        "to_call": 50,
+        "min_raise": 100,
+        "max_raise": 0,
+        "valid_actions": ["fold", "call", "raise"],
+        "action_history": [],
+        "hand_number": 1,
+        "round_id": "audit"
+      },
+      "category": "invariant",
+      "note": "Boundary stress: raise offered but max=0; core must omit raise.",
+      "expected": {
+        "equity": 0.890625,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.1595238095238095,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.9971249600369515,
+          "FOLD": 0.0028750399630485166
+        },
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4",
+        "mapped_raise_to": null
+      }
+    }
+  ],
+  "mixed_sequence": [
+    {
+      "fixture": "F01",
+      "expected": {
+        "equity": 0.58984375,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.4736372681896661,
+          "RAISE": 0.5263627318103339
+        },
+        "mapped_raise_to": 340,
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "edcac36a76378e569185a0e0ffffedc65b66745b2cd062f2ae00ea42598f45e4"
+      }
+    },
+    {
+      "fixture": "F07",
+      "expected": {
+        "equity": 0.28515625,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.18333333333333332,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.6335976813479787,
+          "FOLD": 0.28057213219282384,
+          "RAISE": 0.0858301864591975
+        },
+        "mapped_raise_to": 510,
+        "action": {
+          "action": "fold",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "5d1475624bd01eba66ec53ae55d5f7745e216531e8a9f690a854b03de56209cf"
+      }
+    },
+    {
+      "fixture": "F25",
+      "expected": {
+        "equity": null,
+        "params": null,
+        "probs": null,
+        "mapped_raise_to": null,
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "5d1475624bd01eba66ec53ae55d5f7745e216531e8a9f690a854b03de56209cf"
+      }
+    },
+    {
+      "fixture": "F26",
+      "expected": {
+        "equity": null,
+        "params": null,
+        "probs": null,
+        "mapped_raise_to": 340,
+        "action": {
+          "action": "check",
+          "amount": 0
+        },
+        "stderr": "Hold'em state unavailable: invalid card: 'invalid'\n",
+        "rng_hash": "5d1475624bd01eba66ec53ae55d5f7745e216531e8a9f690a854b03de56209cf"
+      }
+    },
+    {
+      "fixture": "F19",
+      "expected": {
+        "equity": 0.8984375,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.23770221126825597,
+          "RAISE": 0.762297788731744
+        },
+        "mapped_raise_to": 1700,
+        "action": {
+          "action": "raise",
+          "amount": 1700
+        },
+        "stderr": "",
+        "rng_hash": "48890ac7361c5900121fdd1c6f5ab4055064966b45cb96c12359553b8e4cc48c"
+      }
+    },
+    {
+      "fixture": "F04",
+      "expected": {
+        "equity": 1.0,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.35,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.21728804582496286,
+          "RAISE": 0.7827119541750371
+        },
+        "mapped_raise_to": 500,
+        "action": {
+          "action": "raise",
+          "amount": 500
+        },
+        "stderr": "",
+        "rng_hash": "a65b11a81687535ed35187bb72263a877547dbac320b1c8018af7382daf39560"
+      }
+    },
+    {
+      "fixture": "F28",
+      "expected": {
+        "equity": 0.8984375,
+        "params": {
+          "value_bet_threshold": 0.55,
+          "call_threshold": 0.1595238095238095,
+          "bluff_freq": 0.15,
+          "aggression": 0.8,
+          "steepness": 8.0
+        },
+        "probs": {
+          "CALL": 0.9972986793599221,
+          "FOLD": 0.0027013206400779213
+        },
+        "mapped_raise_to": null,
+        "action": {
+          "action": "call",
+          "amount": 0
+        },
+        "stderr": "",
+        "rng_hash": "993e3dadff32bdee6fc2a5b980ff071e78356468cc05e34718fad7b38bfc0736"
+      }
+    }
+  ]
+}
