@@ -64,8 +64,8 @@ jobs:
 
       - name: Lint and format the ChipZen port
         run: |
-          ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py
-          ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py
+          ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py scripts/build_opponent_priors.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py tests/test_opponent_memory.py tests/test_opponent_memory_parity.py tests/test_opponent_profiles.py
+          ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py scripts/build_opponent_priors.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py tests/test_opponent_memory.py tests/test_opponent_memory_parity.py tests/test_opponent_profiles.py
 
       - name: Run tests
         run: python -m pytest tests/ -q
