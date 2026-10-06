@@ -20,6 +20,7 @@ from sleight_of_hand.holdem import agent, preflop
 from sleight_of_hand.holdem.agent import HoldemAgent
 from sleight_of_hand.holdem.decision import Decision
 from sleight_of_hand.holdem.equity import estimate_equity
+from sleight_of_hand.holdem.memory import OpponentMemory
 from sleight_of_hand.holdem.opponent import _round_key
 from sleight_of_hand.policy.heuristic import DEFAULT_PARAMS, PolicyParams
 
@@ -64,6 +65,7 @@ class SleightOfHandBot(HoldemAgent, Bot):
         samples: int = 128,
         preflop_config: preflop.PreflopConfig = preflop.DEFAULT_PREFLOP,
         trace_preflop: bool = False,
+        opponent_memory: OpponentMemory | None = None,
     ) -> None:
         if not 1 <= samples <= 512:
             raise ValueError("samples must be between 1 and 512")
@@ -75,6 +77,7 @@ class SleightOfHandBot(HoldemAgent, Bot):
             samples=samples,
             preflop_config=preflop_config,
             trace_preflop=trace_preflop,
+            opponent_memory=opponent_memory,
         )
         self._seat: int | None = None
         self._accounting_observer = accounting_observer.from_environment()
@@ -97,11 +100,13 @@ class SleightOfHandBot(HoldemAgent, Bot):
         self._learn_seat(match_info)
         super().on_match_start(match_info)
         self._observe("match_start")
+        self._memory_event("match_start", match_info)
 
     def on_reconnected(self, message: dict) -> None:
         self._learn_seat(message)
         super().on_reconnected(message)
         self._observe("reconnected")
+        self._memory_event("reconnected", message)
 
     def on_round_start(self, message: dict) -> None:
         if isinstance(message, dict):
@@ -110,6 +115,7 @@ class SleightOfHandBot(HoldemAgent, Bot):
                 self.shove_model.record_start(_round_key(message), state)
         super().on_round_start(message)
         self._observe("round_start", message, self._seat)
+        self._memory_event("round_start", message)
 
     def on_round_result(self, message: dict) -> None:
         # Observation never raises and applies a hand entirely or not at all.
@@ -122,10 +128,25 @@ class SleightOfHandBot(HoldemAgent, Bot):
             self.shove_model.observe_result(key, result, self._seat)
         super().on_round_result(message)
         self._observe("round_result", message)
+        self._memory_event("round_result", message)
 
     def on_turn_result(self, message: dict) -> None:
         super().on_turn_result(message)
         self._observe("turn_result", message)
+        self._memory_event("turn_result", message)
+
+    def _memory_event(self, event: str, message: dict) -> None:
+        # Always after existing ShoveModel, SDK and accounting operations.
+        # Optional research state must never change canonical hook behavior.
+        if self.opponent_memory is not None:
+            try:
+                self.opponent_memory.notify(event, message, self._seat)
+            except Exception:  # noqa: BLE001 - fail-open optional memory
+                self.opponent_memory = None
+
+    def on_match_end(self, message: dict) -> None:
+        super().on_match_end(message)
+        self._memory_event("match_end", message)
 
     def shove_estimate(self, context: preflop.PreflopContext) -> dict | None:
         return super().shove_estimate(context)

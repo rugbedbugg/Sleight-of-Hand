@@ -12,6 +12,7 @@ from sleight_of_hand.holdem import preflop
 from sleight_of_hand.holdem.decision import Decision, DecisionState
 from sleight_of_hand.holdem.equity import estimate_equity
 from sleight_of_hand.holdem.hands import hand_class
+from sleight_of_hand.holdem.memory import OpponentMemory
 from sleight_of_hand.holdem.opponent import OPEN, RESHOVE, ShoveModel
 from sleight_of_hand.policy.heuristic import (
     DEFAULT_PARAMS,
@@ -90,6 +91,7 @@ class HoldemAgent:
         samples: int = 128,
         preflop_config: preflop.PreflopConfig = preflop.DEFAULT_PREFLOP,
         trace_preflop: bool = False,
+        opponent_memory: OpponentMemory | None = None,
     ) -> None:
         if not 1 <= samples <= 512:
             raise ValueError("samples must be between 1 and 512")
@@ -100,6 +102,9 @@ class HoldemAgent:
         self.trace_preflop = trace_preflop
         self._warned_preflop = False
         self.shove_model = ShoveModel(preflop_config)
+        self.opponent_memory = (
+            opponent_memory if opponent_memory is not None else OpponentMemory()
+        )
 
     def shove_estimate(self, context: preflop.PreflopContext) -> dict | None:
         """Adaptive shove-range estimate for a shove decision, else None."""
