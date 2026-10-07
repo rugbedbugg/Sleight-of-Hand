@@ -1,0 +1,54 @@
+{
+  "spec": {
+    "arm": "no-prior",
+    "created_at": "2026-10-07T19:30:39Z",
+    "description": "Synthetic validation of existing historical-prior machinery: memory with a bundle compiled from E0002 tag_simple runs vs fresh match-local memory, on new seeds. Priors reach only the policy-inert memory; decisions must be identical.",
+    "experiment_id": "E0004",
+    "game_variant": "nlhe_hu",
+    "metrics": [
+      "behavior",
+      "model",
+      "outcome"
+    ],
+    "opponent_cohort": [
+      {
+        "key": "tag_simple",
+        "kind": "script",
+        "platform": "local"
+      }
+    ],
+    "platform": "local",
+    "platform_config": {
+      "accounting_observer": false,
+      "big_blind": 100,
+      "cap_bets_to_effective": false,
+      "pot_convention": "committed",
+      "small_blind": 50,
+      "stack_mode": "reset",
+      "starting_stack": 10000,
+      "to_call_convention": "owed"
+    },
+    "policy_config": {
+      "opponent_memory": true
+    },
+    "policy_revision": "sha256:8e51fc380811254489e995ebc6400c0aad1ee56d334003c390085806ebfa6f99",
+    "provenance": "SYNTHETIC",
+    "schema_version": 1,
+    "seed_policy": {
+      "base_seed": 20261004,
+      "common_random_numbers": true
+    },
+    "source_sha": "4a8603e5930d25b496dca296e8e3e5b41355dcde",
+    "stopping": {
+      "early_stopping": "none",
+      "evaluation_interval_matches": 10,
+      "hands_per_match": 100,
+      "matches_per_shard": 5,
+      "max_hands": 2000,
+      "max_matches": 20,
+      "min_hands": 2000,
+      "min_matches": 20
+    }
+  },
+  "spec_hash": "dcc5998ef83c62ee1b714d28dec013fafa207ac9763eef5deea7cf6820693f23"
+}

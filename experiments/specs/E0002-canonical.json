@@ -1,0 +1,69 @@
+{
+  "spec": {
+    "arm": "canonical",
+    "created_at": "2026-10-07T19:28:23Z",
+    "description": "Canonical BasePolicy with policy-inert OpponentMemory (the shipped default) vs the same policy with memory disabled. Paired seeds; actions and results must be identical.",
+    "experiment_id": "E0002",
+    "game_variant": "nlhe_hu",
+    "metrics": [
+      "behavior",
+      "model",
+      "outcome"
+    ],
+    "opponent_cohort": [
+      {
+        "key": "calling_station",
+        "kind": "script",
+        "platform": "local"
+      },
+      {
+        "key": "random_legal",
+        "kind": "script",
+        "platform": "local"
+      },
+      {
+        "key": "tag_simple",
+        "kind": "script",
+        "platform": "local"
+      },
+      {
+        "key": "canonical",
+        "kind": "soh",
+        "platform": "local"
+      }
+    ],
+    "platform": "local",
+    "platform_config": {
+      "accounting_observer": false,
+      "big_blind": 100,
+      "cap_bets_to_effective": false,
+      "pot_convention": "committed",
+      "small_blind": 50,
+      "stack_mode": "reset",
+      "starting_stack": 10000,
+      "to_call_convention": "owed"
+    },
+    "policy_config": {
+      "opponent_memory": true
+    },
+    "policy_revision": "sha256:8e51fc380811254489e995ebc6400c0aad1ee56d334003c390085806ebfa6f99",
+    "provenance": "LOCAL_SELFPLAY",
+    "schema_version": 1,
+    "seed_policy": {
+      "base_seed": 20261002,
+      "common_random_numbers": true
+    },
+    "source_sha": "4a8603e5930d25b496dca296e8e3e5b41355dcde",
+    "stopping": {
+      "early_stopping": "none",
+      "evaluation_interval_matches": 20,
+      "hands_per_match": 100,
+      "matches_per_shard": 10,
+      "max_hands": 4000,
+      "max_matches": 40,
+      "min_hands": 4000,
+      "min_matches": 40
+    }
+  },
+  "spec_hash": "379ffbdab6b4f9c44ba547204574b0cd2baa47203ac96127abb8f8f7b6ea84eb"
+}

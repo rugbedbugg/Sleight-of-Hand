@@ -1,0 +1,49 @@
+{
+  "spec": {
+    "arm": "accounting-probe",
+    "created_at": "2026-10-07T19:28:23Z",
+    "description": "Chipzen live reachability of unmatched covering chips in the delivered postflop pot. Scripted probe vs diagnostic SOH (observer on) in an owner-created unrated challenge. Measurement only; no pricing repair.",
+    "experiment_id": "E0001",
+    "game_variant": "nlhe_hu",
+    "metrics": [
+      "accounting",
+      "outcome"
+    ],
+    "opponent_cohort": [
+      {
+        "key": "accounting_cover",
+        "kind": "probe",
+        "platform": "chipzen"
+      }
+    ],
+    "platform": "chipzen",
+    "platform_config": {
+      "accounting_observer": true,
+      "environment": "prod",
+      "match_source": "dashboard_unrated_challenge",
+      "timeout_seconds": 3600
+    },
+    "policy_config": {
+      "opponent_memory": true
+    },
+    "policy_revision": "sha256:8e51fc380811254489e995ebc6400c0aad1ee56d334003c390085806ebfa6f99",
+    "provenance": "SCRIPTED_PROBE",
+    "schema_version": 1,
+    "seed_policy": {
+      "base_seed": 20261001,
+      "common_random_numbers": false
+    },
+    "source_sha": "4a8603e5930d25b496dca296e8e3e5b41355dcde",
+    "stopping": {
+      "early_stopping": "none",
+      "evaluation_interval_matches": 1,
+      "hands_per_match": 1000,
+      "matches_per_shard": 1,
+      "max_hands": 5000,
+      "max_matches": 5,
+      "min_hands": 1,
+      "min_matches": 1
+    }
+  },
+  "spec_hash": "04305eb03188516cf9149c6f091258faf83d1d2cfe191633460b746cd158a658"
+}

@@ -1,0 +1,53 @@
+{
+  "spec": {
+    "arm": "contestable",
+    "created_at": "2026-10-07T19:28:23Z",
+    "description": "Local rehearsal of the E0001 probe pipeline under explicit dealer conventions. Validates probe, observer, framing and classifier; says nothing about Chipzen.",
+    "experiment_id": "E0005",
+    "game_variant": "nlhe_hu",
+    "metrics": [
+      "accounting",
+      "outcome"
+    ],
+    "opponent_cohort": [
+      {
+        "key": "accounting_cover",
+        "kind": "probe",
+        "platform": "local"
+      }
+    ],
+    "platform": "local",
+    "platform_config": {
+      "accounting_observer": true,
+      "big_blind": 100,
+      "cap_bets_to_effective": false,
+      "pot_convention": "contestable",
+      "small_blind": 50,
+      "stack_mode": "carry",
+      "starting_stack": 10000,
+      "to_call_convention": "owed"
+    },
+    "policy_config": {
+      "opponent_memory": true
+    },
+    "policy_revision": "sha256:8e51fc380811254489e995ebc6400c0aad1ee56d334003c390085806ebfa6f99",
+    "provenance": "SCRIPTED_PROBE",
+    "schema_version": 1,
+    "seed_policy": {
+      "base_seed": 20261005,
+      "common_random_numbers": true
+    },
+    "source_sha": "4a8603e5930d25b496dca296e8e3e5b41355dcde",
+    "stopping": {
+      "early_stopping": "none",
+      "evaluation_interval_matches": 10,
+      "hands_per_match": 400,
+      "matches_per_shard": 5,
+      "max_hands": 8000,
+      "max_matches": 20,
+      "min_hands": 1,
+      "min_matches": 10
+    }
+  },
+  "spec_hash": "d1704d909a880aa643878ca5e85a06c8df91e262add7653c3a8838f52a06a465"
+}
