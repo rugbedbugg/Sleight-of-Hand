@@ -40,15 +40,22 @@ jobs:
             [tools]
             python = "${{ matrix.python-version }}"
 
-      - name: Create the environment
-        run: |
-          "$(mise which python)" -m venv .venv
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.23"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
-      - name: Install dependencies
+      - name: Create the environment from the committed lock
+        # --locked fails if pyproject.toml and uv.lock disagree instead of
+        # re-resolving, so CI can never update the lock. The matrix
+        # interpreter comes from mise; uv must not download another.
+        env:
+          UV_PYTHON_DOWNLOADS: never
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+          uv sync --locked --python "$(mise which python)"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Confirm the matrix interpreter
         run: |
@@ -64,8 +71,8 @@ jobs:
 
       - name: Lint and format the ChipZen port
         run: |
-          ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py scripts/build_opponent_priors.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py tests/test_opponent_memory.py tests/test_opponent_memory_parity.py tests/test_opponent_profiles.py sleight_of_hand/experiments scripts/run_experiment.py scripts/run_experiment_batch.py scripts/analyze_experiment.py scripts/build_local_prior.py tests/test_experiment_spec.py tests/test_experiment_journal.py tests/test_experiment_local_platform.py tests/test_experiment_metrics.py tests/test_experiment_scheduler.py tests/test_experiment_chipzen.py tests/test_experiment_firewall.py
-          ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py scripts/build_opponent_priors.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py tests/test_opponent_memory.py tests/test_opponent_memory_parity.py tests/test_opponent_profiles.py sleight_of_hand/experiments scripts/run_experiment.py scripts/run_experiment_batch.py scripts/analyze_experiment.py scripts/build_local_prior.py tests/test_experiment_spec.py tests/test_experiment_journal.py tests/test_experiment_local_platform.py tests/test_experiment_metrics.py tests/test_experiment_scheduler.py tests/test_experiment_chipzen.py tests/test_experiment_firewall.py
+          ruff check --isolated bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py scripts/build_opponent_priors.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py tests/test_opponent_memory.py tests/test_opponent_memory_parity.py tests/test_opponent_profiles.py sleight_of_hand/experiments scripts/run_experiment.py scripts/run_experiment_batch.py scripts/analyze_experiment.py scripts/build_local_prior.py tests/test_experiment_spec.py tests/test_experiment_journal.py tests/test_experiment_local_platform.py tests/test_experiment_metrics.py tests/test_experiment_scheduler.py tests/test_experiment_chipzen.py tests/test_experiment_firewall.py tests/test_dependencies.py
+          ruff format --isolated --check bots/chipzen/bot.py sleight_of_hand/holdem scripts/build_chipzen.py scripts/generate_preflop_tables.py scripts/preflop_calibration.py scripts/audit_preflop.py scripts/shove_adaptation_report.py scripts/build_opponent_priors.py tests/test_chipzen.py tests/test_preflop.py tests/test_preflop_gate.py tests/test_shove_model.py tests/test_opponent_memory.py tests/test_opponent_memory_parity.py tests/test_opponent_profiles.py sleight_of_hand/experiments scripts/run_experiment.py scripts/run_experiment_batch.py scripts/analyze_experiment.py scripts/build_local_prior.py tests/test_experiment_spec.py tests/test_experiment_journal.py tests/test_experiment_local_platform.py tests/test_experiment_metrics.py tests/test_experiment_scheduler.py tests/test_experiment_chipzen.py tests/test_experiment_firewall.py tests/test_dependencies.py
 
       - name: Run tests
         run: python -m pytest tests/ -q
@@ -92,3 +99,8 @@ jobs:
             echo "::error::--gamemode deuce27 raised instead of exiting cleanly"
             exit 1
           fi
+
+      - name: The lock and the checkout are unchanged
+        run: |
+          git diff --exit-code -- uv.lock
+          test -z "$(git status --porcelain)" || { git status --short; exit 1; }

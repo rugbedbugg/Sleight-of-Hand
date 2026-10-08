@@ -76,11 +76,21 @@ results/        generated plots, CSVs, and the GA's best genome (produced by scr
 
 ## Setup
 
+Dependencies are declared in `pyproject.toml` and locked in the committed
+`uv.lock`; [uv](https://docs.astral.sh/uv/) manages both:
+
 ```bash
-uv venv
-source .venv/bin/activate
-uv pip install -r requirements.txt
+uv sync --locked                  # .venv from the lock; fails if it is stale
+uv run python -m pytest tests/ -q
 ```
+
+`uv sync` installs the default `dev` group (pytest, the pinned Ruff and the
+`chipzen` group); `uv sync --no-dev` installs only NumPy and Matplotlib.
+The project runs from the checkout and is not installed into `.venv`.
+Change dependencies with `uv add` / `uv remove` (or edit `pyproject.toml`
+and run `uv lock`) and commit `uv.lock` with the change. Plain `uv run` is
+the normal workflow; `uv run --no-project` is no longer needed. The
+commands below assume `uv run` or an activated `.venv`.
 
 ## Running things
 

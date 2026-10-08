@@ -4,13 +4,19 @@ Sleight of Hand is a heads-up Leduc hold'em agent built from a game engine, Baye
 
 ## Development setup
 
-Use the uv-managed Python selected by `.python-version`:
+Use the uv-managed Python selected by `.python-version`. Dependencies come
+from `pyproject.toml` and the committed `uv.lock`:
 
 ```sh
-uv venv
-uv pip install -r requirements.txt
+uv sync --locked
 uv run pytest tests/ -q
 ```
+
+Change dependencies with `uv add` / `uv remove` (or edit `pyproject.toml`
+and run `uv lock`), and commit `uv.lock` in the same change. A ChipZen SDK
+or WebSocket pin change must also update `bots/chipzen/requirements.txt`,
+the uploaded runtime's install list; `tests/test_dependencies.py` fails if
+the two differ. CI runs `uv sync --locked` and never updates the lock.
 
 Use `uv run python demo.py --hands 5 --seed 1` for a short interactive smoke test. Full experiment scripts can take several minutes and write into `results/`.
 

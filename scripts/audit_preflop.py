@@ -15,8 +15,8 @@ generation used, the equities that decide policy boundaries:
 * every EQUITY_VS_TOP row: are there drops between adjacent widths larger
   than sampling noise explains?
 
-    uv run --no-project python scripts/audit_preflop.py --policy
-    uv run --no-project python scripts/audit_preflop.py --equity  # minutes
+    uv run python scripts/audit_preflop.py --policy
+    uv run python scripts/audit_preflop.py --equity  # minutes
 """
 
 from __future__ import annotations

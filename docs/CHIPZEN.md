@@ -13,16 +13,17 @@ are unchanged; this does not register a local `--gamemode holdem` engine.
 From the repository root, use the existing Python 3.13 pin:
 
 ```sh
-uv venv
-uv pip install -r requirements-dev.txt
+uv sync --locked
 uv run python -m pytest tests/ -q
 uv run python scripts/build_chipzen.py
 uv run chipzen-sdk validate build/chipzen --check-connectivity
 ```
 
 The SDK and its WebSocket dependency are pinned exactly in
-`bots/chipzen/requirements.txt`. Existing project dependency constraints
-are unchanged. The bot runtime needs neither NumPy nor Matplotlib; the
+`bots/chipzen/requirements.txt`, the only install list the uploaded image
+uses. For development they are the `chipzen` dependency group in
+`pyproject.toml` (locked in `uv.lock`, included in the default `dev`
+group); `tests/test_dependencies.py` keeps the two identical. The bot runtime needs neither NumPy nor Matplotlib; the
 staging script copies only the required Python modules and license.
 `build/chipzen/` is disposable and replaced whenever staging runs.
 
@@ -358,9 +359,9 @@ prior strength.
 ### Reproduce and compare
 
 ```sh
-uv run --no-project python -m pytest tests/test_preflop.py -q
-uv run --no-project python scripts/preflop_calibration.py   # v3 and Season 6 side by side
-uv run --no-project python scripts/generate_preflop_tables.py  # ~4 min on 8 cores; byte-identical
+uv run python -m pytest tests/test_preflop.py -q
+uv run python scripts/preflop_calibration.py   # v3 and Season 6 side by side
+uv run python scripts/generate_preflop_tables.py  # ~4 min on 8 cores; byte-identical
 git worktree add ../soh-season6 season-6   # the untouched Season 6 source
 ```
 
@@ -401,8 +402,8 @@ been run yet.
 `tests/test_chipzen.py` checks hand categories and kickers, best-five
 selection, equity ties, multiway seats, malformed-card fallback, raise
 bounds, and SDK wire parsing. The existing Leduc tests cover regression
-of the shared policy. Install the port requirements to enable the SDK
-tests; CI installs them explicitly. Run the SDK check on the **staged**
+of the shared policy. The SDK tests skip without the `chipzen` group;
+`uv sync` installs it and CI requires it. Run the SDK check on the **staged**
 directory to catch missing runtime modules before building a container.
 
 Version 1 local validation: 81 tests passed on both Python 3.10 and 3.13; the SDK's full

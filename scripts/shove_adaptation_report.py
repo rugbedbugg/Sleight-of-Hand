@@ -6,7 +6,7 @@ Report-only diagnostics (no tuning). Feeds synthetic but protocol-shaped
 exploit (an opponent who jams every chance at ~50bb) through the real bot's
 hooks and ``decide()``.
 
-    uv run --no-project python scripts/shove_adaptation_report.py
+    uv run python scripts/shove_adaptation_report.py
 """
 
 from __future__ import annotations

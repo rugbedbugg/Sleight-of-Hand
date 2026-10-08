@@ -5,9 +5,7 @@ import random
 
 import pytest
 
-pytest.importorskip(
-    "chipzen", reason="install bots/chipzen/requirements.txt for port tests"
-)
+pytest.importorskip("chipzen", reason="run `uv sync` (chipzen group) for port tests")
 from chipzen import Action, Card, GameState
 
 from bots.chipzen.bot import (

@@ -11,7 +11,7 @@ pot-odds adjustment and sigmoid policy, averaged over repeated 128-sample
 random-hand equity estimates per class (seeded, so output is repeatable).
 These are local predictions, not measurements against real opponents.
 
-    uv run --no-project python scripts/preflop_calibration.py
+    uv run python scripts/preflop_calibration.py
 """
 
 from __future__ import annotations

@@ -30,7 +30,7 @@ from sleight_of_hand.holdem.preflop_tables import ORDER
 from tests.test_preflop import sdk_state, spot
 
 chipzen = pytest.importorskip(
-    "chipzen", reason="install bots/chipzen/requirements.txt for port tests"
+    "chipzen", reason="run `uv sync` (chipzen group) for port tests"
 )
 from bots.chipzen.bot import SleightOfHandBot
 

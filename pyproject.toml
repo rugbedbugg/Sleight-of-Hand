@@ -9,6 +9,19 @@ description = "A heads-up Leduc hold'em agent built on Bayesian opponent modelin
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "matplotlib>=3.7"]
 
+[dependency-groups]
+# Must equal bots/chipzen/requirements.txt, the uploaded runtime's own
+# install list (tests/test_dependencies.py enforces it).
+chipzen = ["chipzen-bot==0.4.0", "websockets==15.0.1"]
+dev = ["pytest>=7.4", "ruff==0.16.3", { include-group = "chipzen" }]
+
+[tool.uv]
+# Development, tests and research run from the checkout (scripts and tests
+# put the repository root on sys.path), so the project is not installed.
+package = false
+# `dev` is synced by default, so `uv sync` / `uv run` give the full toolchain.
+default-groups = ["dev"]
+
 [tool.setuptools.packages.find]
 include = ["sleight_of_hand*"]
 

@@ -8,10 +8,14 @@ validation. The README follows its purpose, installation, quick-start,
 usage/configuration, development/testing, and license structure, with the
 ChipZen-specific sections in `docs/CHIPZEN.md`.
 
-CI retains the Python 3.10/3.13 compatibility matrix. `uv run --no-project`
-uses the matrix environment without replacing it with the development
-`.python-version`. The ChipZen SDK and WebSocket runtime are exactly pinned;
-Ruff is pinned in `requirements-dev.txt`. Lint/format currently cover the
+CI retains the Python 3.10/3.13 compatibility matrix. mise provides the
+matrix interpreter and `uv sync --locked --python` builds `.venv` from the
+committed `uv.lock` (failing rather than re-resolving if it is stale), so the
+development `.python-version` never replaces the matrix interpreter and CI
+never updates the lock; a final step checks the lock and checkout are
+unchanged. The ChipZen SDK and WebSocket runtime are exactly pinned in the
+`chipzen` dependency group and mirrored in `bots/chipzen/requirements.txt`;
+Ruff is pinned in the `dev` group. Lint/format currently cover the
 new port files; existing Leduc modules retain their formatting and tests.
 The staged runtime is checked by the SDK's protocol-conformance harness.
 
