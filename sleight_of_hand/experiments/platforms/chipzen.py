@@ -11,8 +11,10 @@ Matches come only from an *unrated* challenge created by the account owner
 in the Chipzen dashboard (the documented route for same-owner matches, which
 are never rated). The owner signals that the challenge exists by setting
 ``CHIPZEN_RESEARCH_CHALLENGE_READY=1``. The ``matched.rated`` flag is
-recorded from the SDK's structured log record; a rated match is quarantined
-and the run fails.
+recorded from the SDK's structured log record, attributed to the worker that
+received it. The check fails closed: the run fails unless every connected
+worker logged exactly one well-formed ``matched`` record with ``rated`` exactly
+``False``, all for the one match the SDK session returned.
 
 Raw evidence is every message the SDK delivers to SOH's hooks. The SDK does
 not expose raw ``turn_request`` frames, so decision requests are rebuilt
@@ -22,6 +24,7 @@ from the SDK-parsed ``GameState`` and flagged as such.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import copy
 import logging
 import os
@@ -37,6 +40,11 @@ PROBE_ENV = ("CHIPZEN_PROBE_TOKEN", "CHIPZEN_PROBE_BOT_ID")
 READY_FLAG = "CHIPZEN_RESEARCH_CHALLENGE_READY"
 CONFIG_KEYS = {"environment", "match_source", "accounting_observer", "timeout_seconds"}
 ALLOWED_PROVENANCE = {Provenance.LIVE_UNRATED, Provenance.SCRIPTED_PROBE}
+MATCHED_PREFIX = "lobby: matched"
+MATCHED_FORMAT = "lobby: matched -> match %s (rated=%s); playing"
+_WORKER: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "chipzen_research_worker", default=None
+)
 
 
 def _missing(names) -> list[str]:
@@ -130,17 +138,70 @@ class Recorder:
 
 
 class _MatchedLog(logging.Handler):
-    """Reads the SDK's structured ``matched`` log record (match_id, rated)."""
+    """Reads the SDK's structured ``matched`` log record (match_id, rated).
+
+    Each record is attributed to the worker whose task logged it. A record
+    that mentions ``matched`` but does not have the expected shape is kept
+    as malformed, so a changed SDK format fails the run instead of vanishing.
+    """
 
     def __init__(self):
         super().__init__(logging.INFO)
         self.matched: list[dict] = []
 
     def emit(self, record):
-        if record.msg.startswith("lobby: matched ->") and len(record.args) >= 2:
-            self.matched.append(
-                {"match_id": str(record.args[0]), "rated": record.args[1]}
+        msg, args = record.msg, record.args
+        if not isinstance(msg, str) or not msg.startswith(MATCHED_PREFIX):
+            return
+        entry: dict = {"worker": _WORKER.get()}
+        if msg != MATCHED_FORMAT or not isinstance(args, tuple) or len(args) != 2:
+            entry["malformed"] = True
+        else:
+            entry["match_id"], entry["rated"] = args
+        self.matched.append(entry)
+
+
+def verify_unrated(matched: list[dict], results: dict[str, list]) -> str:
+    """Return the one match ID only on positive, consistent unrated evidence.
+
+    ``results`` maps each connected worker to its ``run_external_bot`` result.
+    Absent, malformed, unattributed, duplicate, ``None``/``True``-rated or
+    mismatched evidence raises; nothing is ever inferred from missing data.
+    """
+    if not matched:
+        raise RuntimeError("no matched notification was observed; rating unknown")
+    unknown = [m for m in matched if m.get("worker") not in results]
+    if unknown:
+        raise RuntimeError("a matched notification came from an unknown worker")
+    match_ids = set()
+    for worker, worker_results in results.items():
+        records = [m for m in matched if m["worker"] == worker]
+        if len(records) != 1:
+            raise RuntimeError(
+                f"{worker}: expected one matched notification, saw {len(records)}"
             )
+        record = records[0]
+        if record.get("malformed"):
+            raise RuntimeError(f"{worker}: matched notification was malformed")
+        if record["rated"] is not False:
+            raise RuntimeError(
+                f"{worker}: matched notification was not explicitly unrated"
+            )
+        match_id = record["match_id"]
+        if not isinstance(match_id, str) or not match_id:
+            raise RuntimeError(f"{worker}: matched notification had no match ID")
+        returned = [
+            r.get("match_id") if isinstance(r, dict) else None
+            for r in worker_results or []
+        ]
+        if returned != [match_id]:
+            raise RuntimeError(
+                f"{worker}: session result does not match the matched notification"
+            )
+        match_ids.add(match_id)
+    if len(match_ids) != 1:
+        raise RuntimeError("workers were matched into different matches")
+    return match_ids.pop()
 
 
 def make_probe_bot(seed: int, margin: int):
@@ -250,26 +311,32 @@ class ChipzenExternalPlatform(Platform):
         previous = sdk_log.level
         sdk_log.setLevel(logging.INFO)
 
+        workers = {
+            "soh": (
+                soh,
+                os.environ["CHIPZEN_RESEARCH_BOT_ID"],
+                os.environ["CHIPZEN_RESEARCH_TOKEN"],
+            )
+        }
+        if context.opponent.kind == "probe":
+            workers["probe"] = (
+                make_probe_bot(context.seeds["opponent"], margin=200),
+                os.environ["CHIPZEN_PROBE_BOT_ID"],
+                os.environ["CHIPZEN_PROBE_TOKEN"],
+            )
+
+        async def worker(name, bot, bot_id, token):
+            _WORKER.set(name)  # this task's context; SDK subtasks inherit it
+            return await run_external_bot(
+                bot,
+                bot_id=bot_id,
+                token=token,
+                env=config["environment"],
+                max_matches=1,
+            )
+
         async def session():
-            jobs = [
-                run_external_bot(
-                    soh,
-                    bot_id=os.environ["CHIPZEN_RESEARCH_BOT_ID"],
-                    token=os.environ["CHIPZEN_RESEARCH_TOKEN"],
-                    env=config["environment"],
-                    max_matches=1,
-                )
-            ]
-            if context.opponent.kind == "probe":
-                jobs.append(
-                    run_external_bot(
-                        make_probe_bot(context.seeds["opponent"], margin=200),
-                        bot_id=os.environ["CHIPZEN_PROBE_BOT_ID"],
-                        token=os.environ["CHIPZEN_PROBE_TOKEN"],
-                        env=config["environment"],
-                        max_matches=1,
-                    )
-                )
+            jobs = [worker(name, *args) for name, args in workers.items()]
             return await asyncio.wait_for(
                 asyncio.gather(*jobs), timeout=config["timeout_seconds"]
             )
@@ -280,12 +347,11 @@ class ChipzenExternalPlatform(Platform):
             sdk_log.removeHandler(handler)
             sdk_log.setLevel(previous)
         emit({"kind": "lobby_matched", "matched": handler.matched})
-        if any(m["rated"] is not False for m in handler.matched):
-            raise RuntimeError("a matched notification was not explicitly unrated")
+        match_id = verify_unrated(handler.matched, dict(zip(workers, results)))
         return MatchSummary(
             match_index=context.match_index,
             hands=recorder.rounds,
-            platform_ids={"matches": [r.get("match_id") for r in results[0]]},
+            platform_ids={"matches": [match_id]},
             uncontrolled=tuple(self.metadata()["uncontrolled"]),
         )
 

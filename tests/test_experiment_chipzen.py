@@ -119,11 +119,10 @@ def test_no_connection_is_attempted_without_credentials(clean_env):
     assert called == []
 
 
-def drive(bot, rated=False):
+def drive(bot, log=True):
     """Feed the SDK's own conformance messages through the hook sequence."""
-    logging.getLogger("chipzen.external").info(
-        "lobby: matched -> match %s (rated=%s); playing", "m-1", rated
-    )
+    if log:
+        logging.getLogger("chipzen.external").info(adapter.MATCHED_FORMAT, "m-1", False)
     bot.on_match_start(conformance._match_start())
     bot.on_round_start(conformance._round_start())
     action = bot.decide(GameState.from_turn_request(conformance._turn_request()))
@@ -166,29 +165,196 @@ def test_recorded_messages_are_redacted_in_the_journal(tmp_path, clean_env):
     assert stored["session_token"] == "[REDACTED]" and stored["echo"] == "[REDACTED]"
 
 
-@pytest.mark.parametrize("rated", [False, True, None])
-def test_play_match_records_lobby_rating_and_refuses_rated(clean_env, rated):
+MATCH = conformance._match_end()["match_id"]
+SOH_TOKEN, PROBE_TOKEN = "cz_extbot_researchAAAA", "cz_extbot_probeBBBB"
+
+
+def log_matched(match_id=MATCH, rated=False):
+    logging.getLogger("chipzen.external").info(adapter.MATCHED_FORMAT, match_id, rated)
+
+
+def play(clean_env, behaviors, opponent="probe"):
+    """Run play_match against a fake SDK; ``behaviors`` maps token -> callable.
+
+    Each callable receives the bot, may log ``matched`` evidence, and returns
+    the session result list (default: one clean result for ``MATCH``).
+    """
     credentials(clean_env)
     clean_env.setenv(adapter.READY_FLAG, "1")
+    seen = []
 
     async def fake_run_external_bot(bot, **kwargs):
         assert kwargs["max_matches"] == 1 and kwargs["token"].startswith("cz_extbot_")
-        drive(bot, rated=rated)
-        return [{"match_id": "m-1", "end": {}}]
+        seen.append(kwargs["token"])
+        returned = behaviors[kwargs["token"]](bot)
+        if kwargs["token"] == SOH_TOKEN:
+            drive(bot, log=False)
+        return [{"match_id": MATCH, "end": {}}] if returned is None else returned
 
     clean_env.setattr("chipzen.run_external_bot", fake_run_external_bot)
-    spec = chipzen_spec()
-    events = []
-    platform = adapter.ChipzenExternalPlatform()
-    context = MatchContext(spec, 0, spec.opponent_cohort[0], {"soh": 1, "opponent": 2})
-    if rated is False:
-        summary = platform.play_match(context, events.append)
-        assert summary.hands == 1 and summary.uncontrolled
-        lobby = [e for e in events if e["kind"] == "lobby_matched"]
-        assert lobby[0]["matched"] == [{"match_id": "m-1", "rated": False}] * 2
+    if opponent == "probe":
+        spec = chipzen_spec()
     else:
-        with pytest.raises(RuntimeError, match="unrated"):
-            platform.play_match(context, events.append)
+        spec = chipzen_spec(Provenance.LIVE_UNRATED, "house_bot", "h1")
+    events = []
+    context = MatchContext(spec, 0, spec.opponent_cohort[0], {"soh": 1, "opponent": 2})
+    summary = adapter.ChipzenExternalPlatform().play_match(context, events.append)
+    return summary, events, seen
+
+
+def unrated(bot):
+    log_matched()
+
+
+def test_probe_mode_with_both_workers_explicitly_unrated_is_allowed(clean_env):
+    summary, events, seen = play(clean_env, {SOH_TOKEN: unrated, PROBE_TOKEN: unrated})
+    assert sorted(seen) == sorted([SOH_TOKEN, PROBE_TOKEN])
+    assert summary.hands == 1 and summary.uncontrolled
+    assert summary.platform_ids == {"matches": [MATCH]}
+    lobby = [e for e in events if e["kind"] == "lobby_matched"]
+    assert sorted(lobby[0]["matched"], key=lambda m: m["worker"]) == [
+        {"worker": "probe", "match_id": MATCH, "rated": False},
+        {"worker": "soh", "match_id": MATCH, "rated": False},
+    ]
+
+
+def test_house_bot_mode_needs_only_the_soh_worker(clean_env):
+    summary, _, seen = play(clean_env, {SOH_TOKEN: unrated}, opponent="house_bot")
+    assert seen == [SOH_TOKEN]
+    assert summary.platform_ids == {"matches": [MATCH]}
+
+
+def silent(bot):
+    return None
+
+
+def logs(*calls):
+    def behavior(bot):
+        for args in calls:
+            log_matched(*args)
+
+    return behavior
+
+
+def raw_log(msg, *args):
+    def behavior(bot):
+        logging.getLogger("chipzen.external").info(msg, *args)
+
+    return behavior
+
+
+REJECTED = {
+    "rated_true": ({SOH_TOKEN: logs((MATCH, True)), PROBE_TOKEN: unrated}, "unrated"),
+    "rated_none": ({SOH_TOKEN: logs((MATCH, None)), PROBE_TOKEN: unrated}, "unrated"),
+    "rated_string_false": (
+        {SOH_TOKEN: logs((MATCH, "False")), PROBE_TOKEN: unrated},
+        "unrated",
+    ),
+    "rated_zero": ({SOH_TOKEN: logs((MATCH, 0)), PROBE_TOKEN: unrated}, "unrated"),
+    "zero_records": ({SOH_TOKEN: silent, PROBE_TOKEN: silent}, "no matched"),
+    "probe_evidence_missing": ({SOH_TOKEN: unrated, PROBE_TOKEN: silent}, "probe"),
+    "soh_evidence_missing": ({SOH_TOKEN: silent, PROBE_TOKEN: unrated}, "soh"),
+    "probe_rated_true": (
+        {SOH_TOKEN: unrated, PROBE_TOKEN: logs((MATCH, True))},
+        "probe",
+    ),
+    "duplicate_records": (
+        {SOH_TOKEN: logs((MATCH, False), (MATCH, False)), PROBE_TOKEN: unrated},
+        "expected one",
+    ),
+    "contradictory_records": (
+        {SOH_TOKEN: logs((MATCH, False), (MATCH, True)), PROBE_TOKEN: unrated},
+        "expected one",
+    ),
+    "changed_format": (
+        {
+            SOH_TOKEN: raw_log("lobby: matched => %s rated=%s", MATCH, False),
+            PROBE_TOKEN: unrated,
+        },
+        "malformed",
+    ),
+    "missing_args": (
+        {
+            SOH_TOKEN: raw_log("lobby: matched -> match (rated unknown)"),
+            PROBE_TOKEN: unrated,
+        },
+        "malformed",
+    ),
+    "empty_match_id": (
+        {SOH_TOKEN: logs(("", False)), PROBE_TOKEN: logs(("", False))},
+        "match ID",
+    ),
+    "different_matches": (
+        {
+            SOH_TOKEN: unrated,
+            PROBE_TOKEN: lambda bot: (
+                log_matched("m-other"),
+                [{"match_id": "m-other"}],
+            )[1],
+        },
+        "different matches",
+    ),
+    "session_result_mismatch": (
+        {
+            SOH_TOKEN: lambda bot: (log_matched(), [{"match_id": "m-other"}])[1],
+            PROBE_TOKEN: unrated,
+        },
+        "session result",
+    ),
+    "session_result_failed": (
+        {
+            SOH_TOKEN: lambda bot: (
+                log_matched(),
+                [{"match_id": None, "reason": "exception"}],
+            )[1],
+            PROBE_TOKEN: unrated,
+        },
+        "session result",
+    ),
+    "session_result_empty": (
+        {SOH_TOKEN: lambda bot: (log_matched(), [])[1], PROBE_TOKEN: unrated},
+        "session result",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(REJECTED))
+def test_missing_or_inconsistent_rating_evidence_fails_closed(clean_env, case):
+    behaviors, reason = REJECTED[case]
+    with pytest.raises(RuntimeError, match=reason):
+        play(clean_env, behaviors)
+
+
+def test_unattributed_matched_record_is_rejected():
+    handler = adapter._MatchedLog()
+    record = logging.LogRecord(
+        "chipzen.external",
+        logging.INFO,
+        "x",
+        1,
+        adapter.MATCHED_FORMAT,
+        (MATCH, False),
+        None,
+    )
+    handler.emit(record)  # logged outside any research worker's context
+    assert handler.matched == [{"worker": None, "match_id": MATCH, "rated": False}]
+    with pytest.raises(RuntimeError, match="unknown worker"):
+        adapter.verify_unrated(handler.matched, {"soh": [{"match_id": MATCH}]})
+
+
+def test_matched_handler_ignores_non_string_and_unrelated_messages():
+    handler = adapter._MatchedLog()
+    for msg, args in (
+        (RuntimeError("boom"), ()),
+        ({"type": "matched"}, ()),
+        ("match %s: connecting gateway", (MATCH,)),
+    ):
+        handler.emit(
+            logging.LogRecord("chipzen.external", logging.INFO, "x", 1, msg, args, None)
+        )
+    assert handler.matched == []
+    with pytest.raises(RuntimeError, match="no matched"):
+        adapter.verify_unrated(handler.matched, {"soh": [{"match_id": MATCH}]})
 
 
 def test_probe_bot_is_a_chipzen_bot_with_its_own_identity():
