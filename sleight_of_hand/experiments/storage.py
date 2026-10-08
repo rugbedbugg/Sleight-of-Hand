@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -114,6 +115,50 @@ def migrate(connection: sqlite3.Connection) -> int:
     return schema_version(connection)
 
 
+def _enable_wal(connection: sqlite3.Connection, *, timeout: float = 30) -> None:
+    """Enter WAL in autocommit mode, within one contention timeout budget.
+
+    The journal-mode lock upgrade can return SQLITE_BUSY without invoking
+    SQLite's busy handler. Even reading the mode can contend with another
+    opener. Retry only these operations, without retaining a transaction or
+    cursor across attempts, and re-read the mode after every busy result.
+    """
+    deadline = time.monotonic() + timeout
+    delay = 0.001
+    # Own the wait budget here: SQLite must not spend another full timeout
+    # inside each attempt. Ordinary transactions keep their native timeout.
+    connection.execute("PRAGMA busy_timeout = 0")
+    try:
+        while True:
+            try:
+                mode = connection.execute("PRAGMA journal_mode").fetchone()
+                if mode != ("wal",):
+                    mode = connection.execute("PRAGMA journal_mode = WAL").fetchone()
+            except sqlite3.OperationalError as exc:
+                code = getattr(exc, "sqlite_errorcode", None)
+                # Error codes/constants were added in Python 3.11. On 3.10
+                # accept only SQLite's exact SQLITE_BUSY message. SQLITE_LOCKED
+                # (same-connection/shared-cache misuse) is not retried.
+                busy = (
+                    code & 0xFF == 5
+                    if code is not None
+                    else exc.args == ("database is locked",)
+                )
+                remaining = deadline - time.monotonic()
+                if not busy or remaining <= 0:
+                    raise
+                time.sleep(min(delay, remaining))
+                if time.monotonic() >= deadline:
+                    raise
+                delay = min(delay * 2, 0.05)
+            else:
+                if mode != ("wal",):
+                    raise RuntimeError(f"index requires WAL journal mode, got {mode!r}")
+                return
+    finally:
+        connection.execute(f"PRAGMA busy_timeout = {int(timeout * 1000)}")
+
+
 class Index:
     """Short-lived connections so concurrent worker processes can share it."""
 
@@ -125,8 +170,7 @@ class Index:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
         try:
-            connection.execute("PRAGMA busy_timeout = 30000")
-            connection.execute("PRAGMA journal_mode = WAL")
+            _enable_wal(connection)
             connection.execute("PRAGMA foreign_keys = ON")
             migrate(connection)
             yield connection
