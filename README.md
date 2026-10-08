@@ -85,16 +85,34 @@ uv run python -m pytest tests/ -q
 ```
 
 `uv sync` installs the default `dev` group (pytest, the pinned Ruff and the
-`chipzen` group); `uv sync --no-dev` installs only NumPy and Matplotlib.
-The project runs from the checkout and is not installed into `.venv`.
+`chipzen` group) and installs the project editably, exposing `research`.
+`uv sync --no-dev` installs the project and its NumPy/Matplotlib dependencies;
+research execution needs the default development/Chipzen environment.
 Change dependencies with `uv add` / `uv remove` (or edit `pyproject.toml`
 and run `uv lock`) and commit `uv.lock` with the change. Plain `uv run` is
 the normal workflow; `uv run --no-project` is no longer needed. The
 commands below assume `uv run` or an activated `.venv`.
 
+## Approved research
+
+```bash
+uv run research status
+uv run research plan
+uv run research auto
+```
+
+The [research supervisor](experiments/README.md) executes the reviewed
+[programme](experiments/programme.json), resumes unfinished fixed work,
+verifies evidence, and records non-binding conclusions. Missing Chipzen
+credentials block online work while eligible local work continues. Production
+is locked: no policy changes, new trials, promotion, or deployment occurs.
+Inspect `plan` before executing the programme. Use `research run E0003` or
+`research analyze E0003` for one approved experiment, and `--json` for structured
+output. All commands support `--programme` and `--root` after the subcommand.
+
 ## Running things
 
-All entry points take `--gamemode` to select the variant. Only `leduc` is
+The legacy Leduc entry points take `--gamemode` to select the variant. Only `leduc` is
 implemented today; `deuce27` and `mini27` are specified in
 [`docs/SPEC.md`](docs/SPEC.md) and rejected with an explanatory message
 until they land.

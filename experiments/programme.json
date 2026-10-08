@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "resources": {
+    "workers": 2,
+    "min_free_mib": 1024
+  },
+  "experiments": [
+    {
+      "id": "E0002",
+      "governance": "LOCAL_APPROVED",
+      "reason": "Complete the reviewed fixed-horizon local comparison; recommendations require review.",
+      "specs": [
+        {
+          "path": "specs/E0002-canonical.json",
+          "spec_hash": "379ffbdab6b4f9c44ba547204574b0cd2baa47203ac96127abb8f8f7b6ea84eb"
+        },
+        {
+          "path": "specs/E0002-memory-off.json",
+          "spec_hash": "44d65e2dcaba85576b9df67dc4a289ed7325a1d490c09fb64ac1747d3d79c49c"
+        }
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "E0003",
+      "governance": "LOCAL_APPROVED",
+      "reason": "Complete the reviewed fixed-horizon local comparison; recommendations require review.",
+      "specs": [
+        {
+          "path": "specs/E0003-aggression-0.6.json",
+          "spec_hash": "c24f81b406e650d0ff5b2410cbc5172405323ae0a67887b75ace12a27166bba5"
+        },
+        {
+          "path": "specs/E0003-bluff-0.05.json",
+          "spec_hash": "1b2e93f74b7c397d6d041c6f923e5ac6ad947044a78f2792034c43cab47a13f7"
+        },
+        {
+          "path": "specs/E0003-call-threshold-0.45.json",
+          "spec_hash": "0fb236aa4b53d264687b5a8dd6415cf8c0c0b1b3d5967c6344861533e34b946d"
+        },
+        {
+          "path": "specs/E0003-canonical.json",
+          "spec_hash": "45d99c7cb7ad35bf1915be66ce767d56fe2ec18e5427907cbe41c60a4018bcc6"
+        }
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "E0004",
+      "governance": "LOCAL_APPROVED",
+      "reason": "Complete the reviewed fixed-horizon local comparison; recommendations require review.",
+      "specs": [
+        {
+          "path": "specs/E0004-e0002-prior.json",
+          "spec_hash": "cb20a3ddac98cc4469824b1f402a0cbba31bd3c2a3113fd8498e9fa25ea9d0ee"
+        },
+        {
+          "path": "specs/E0004-no-prior.json",
+          "spec_hash": "dcc5998ef83c62ee1b714d28dec013fafa207ac9763eef5deea7cf6820693f23"
+        }
+      ],
+      "depends_on": [
+        "E0002"
+      ]
+    },
+    {
+      "id": "E0005",
+      "governance": "LOCAL_APPROVED",
+      "reason": "Complete the reviewed fixed-horizon local comparison; recommendations require review.",
+      "specs": [
+        {
+          "path": "specs/E0005-capped-bets.json",
+          "spec_hash": "25834b2c97c1ab5f48317c44453e1ac34efe4d0bafd1b3d90eee56d6b7fb8d7c"
+        },
+        {
+          "path": "specs/E0005-committed.json",
+          "spec_hash": "4a52ed052717e2b5c0f6259352c0c605ffd40af924c54a390fd93f070dbe081b"
+        },
+        {
+          "path": "specs/E0005-contestable.json",
+          "spec_hash": "d1704d909a880aa643878ca5e85a06c8df91e262add7653c3a8838f52a06a465"
+        }
+      ],
+      "depends_on": []
+    },
+    {
+      "id": "E0001",
+      "governance": "UNRATED_APPROVED",
+      "reason": "Measurement only through the existing unrated adapter; no pricing change.",
+      "specs": [
+        {
+          "path": "specs/E0001-accounting-probe.json",
+          "spec_hash": "04305eb03188516cf9149c6f091258faf83d1d2cfe191633460b746cd158a658"
+        }
+      ],
+      "depends_on": []
+    }
+  ]
+}

@@ -26,32 +26,122 @@ ExperimentSpec (immutable, hashed) --> scheduler (bounded worker processes)
 Code lives in `sleight_of_hand/experiments/`. It is never imported by the
 Chipzen runtime and is not staged into its image (`tests/test_experiment_firewall.py`).
 
-## Running
+## Research supervisor v1
+
+The canonical public interface is installed by `uv sync --locked`:
 
 ```sh
-# Run (or resume) specs; completed shards are skipped.
-python scripts/run_experiment.py --spec experiments/specs/E0002-canonical.json \
-    --spec experiments/specs/E0002-memory-off.json --workers 2
+uv run research status
+uv run research plan
+uv run research run E0003
+uv run research analyze E0003
+uv run research auto
+```
 
-# A batch from a glob, with host memory/swap/load sampling.
-python scripts/run_experiment_batch.py --match 'E0003-*.json' --workers 2
+`auto` executes approved research inside a declared authority envelope. It is
+not an RL trainer or a policy layer. It never influences an action inside a
+hand. Each command accepts `--programme PATH`, `--root PATH`, and `--json`
+after the subcommand. Defaults are this checkout's `experiments/programme.json`
+and `runs/`. The editable install includes the existing Chipzen adapter package
+needed by local workers; it does not change the production staging contract.
 
-# Analyze one experiment (verifies raw checksums first).
-python scripts/analyze_experiment.py --experiment E0002
+`status` and `plan` read metadata and validate configuration without registering
+specs, recovering runs, creating an index, or starting matches. They show every
+item's arms, pinned hashes, platform/provenance, availability and reason, shard
+counts, incomplete/live runs, analysis status, governance and intended action.
+The current source SHA and policy fingerprint are separate from a historical
+spec's `source_sha`. A policy-inert infrastructure change does not stale a spec;
+a fingerprint mismatch requires review and never rewrites the historical spec.
+Production is always shown as `LOCKED / untouched`.
 
-# Compile a local historical prior (feeds only the policy-inert memory).
-python scripts/build_local_prior.py --experiment E0002 --arm canonical \
+### Reviewed programme
+
+`programme.json` is versioned JSON, not a directory scan. Its required fields:
+
+| Field | Contract |
+|---|---|
+| `schema_version` | Exactly `1` |
+| `resources.workers` | Integer 1–32; the checked-in programme uses 2 |
+| `resources.min_free_mib` | Nonnegative memory floor; the checked-in programme uses 1024 MiB |
+| `experiments` | Ordered list, each with `id`, `governance`, `reason`, `specs`, `depends_on` |
+| `specs` | Explicit `{path, spec_hash}` references; relative paths stay inside the programme directory |
+| `governance` | `LOCAL_APPROVED`, `UNRATED_APPROVED`, or `REQUIRES_REVIEW` |
+| `depends_on` | Unique experiment IDs appearing earlier in the programme |
+
+Unknown fields, duplicate IDs/paths/arms, mismatched hashes, mixed strata,
+cyclic/forward dependencies, unapproved platforms, and unsupported provenance
+are rejected. Local provenance is limited to LOCAL_SELFPLAY, SYNTHETIC,
+SCRIPTED_PROBE and BENCHMARK. Chipzen permits only LIVE_UNRATED/SCRIPTED_PROBE
+and still delegates availability and validation to its existing adapter.
+Changing this file changes authority and requires normal repository review.
+There is no automatic candidate generator or search-space expansion in v1.
+
+The initial programme explicitly lists E0001–E0005. E0004 depends on E0002 and
+requires the artifact hash already pinned by its immutable spec. The supervisor
+does not invent or substitute a prior: a missing bundle is BLOCKED, a mismatched
+bundle fails validation. The existing `build_local_prior.py` remains the explicit
+prior-compilation interface; the resulting hash must match before E0004 runs.
+
+### Finite execution and evidence
+
+An auto cycle makes one pass in dependency order, re-planning after each item.
+It delegates unfinished shards to the existing spawned-process scheduler and
+uses the existing analysis implementation with raw verification enabled.
+Completed work is verified and skipped; analysis receipts bind reports to the
+approved specs and completed evidence. Raw and derived checksums are verified
+before analysis or accepting an already-complete item. Altered evidence fails
+closed. No observed result changes a fixed horizon or stopping rule.
+
+Unavailable platforms are BLOCKED, so missing Chipzen credentials/challenge do
+not prevent later local work. Dependencies and missing artifacts are also
+explicit blocks. A governance boundary or stale fingerprint requires review.
+A failed experiment stops the cycle and retains evidence. Recorded failures
+with unfinished work are not automatically retried on later invocations of the
+same programme; investigation and reviewed recovery are required. Dead-worker
+shards resume through scheduler recovery; live workers block duplicate work.
+
+The supervisor opts into scheduler admission checks that also protect the first
+worker: insufficient or unknown free memory stops admission and returns a
+resource block once any in-flight work drains. It also stops admitting shards
+after a failure; already-running workers finish and retain their evidence.
+Existing developer scripts keep their previous scheduler defaults. There is
+no indefinite credentials/resource polling and no automatic retry loop.
+A nonblocking per-root process lock prevents overlapping supervisor cycles.
+Independent legacy scheduler invocations should not target the same root while
+a supervisor cycle is active.
+
+The result distinguishes COMPLETE, PENDING, BLOCKED, FAILED and REQUIRES_REVIEW.
+FAILED returns exit code 1; completed, blocked and review-boundary cycles exit
+cleanly with their explicit disposition. Invalid commands/programmes fail.
+Conclusions are non-binding INCONCLUSIVE or REQUIRES_REVIEW summaries of the
+existing statistical verdicts/accounting evidence. More samples require a new
+reviewed experiment/spec. A winning result never changes policy or production.
+
+Each execution command writes a unique `runs/supervisor/<cycle-id>.jsonl`:
+append-only, sequence-numbered, timestamped, flushed/fsynced events, read-only
+when closed. Start records include schema/version, source/policy fingerprint,
+programme hash, arguments and the complete initial plan. Item inspections,
+action starts/results, analysis receipts, failures, governance stops and the
+final disposition follow. A crash can leave an unfinished record; it is never
+reported as a successful cycle. These records are supervisor decisions, not raw
+poker evidence. The existing credential redactor scrubs all output and records;
+environment values are never copied into decision records.
+
+### Developer compatibility entry points
+
+Existing scripts remain available, with their existing arguments:
+
+```sh
+uv run python scripts/run_experiment.py --spec experiments/specs/E0002-canonical.json
+uv run python scripts/run_experiment_batch.py --match 'E0003-*.json' --workers 2
+uv run python scripts/analyze_experiment.py --experiment E0002
+uv run python scripts/build_local_prior.py --experiment E0002 --arm canonical \
     --opponent script.tag_simple --data-version e0002-tag-simple-v1 \
     --output runs/priors/e0002-tag-simple.json
 ```
 
-Output goes to `runs/` (git-ignored): `index.sqlite`, `runs/<run-id>/`,
-`analysis/`, `batches/`, `priors/`. Specs whose platform is unavailable (for
-example missing online credentials) are reported and skipped, never forced.
-
-Workers are separate processes. Start with `--workers 2` on the development
-laptop; each local worker measured about 120 MiB RSS and 105-115 hands/s.
-`--min-free-mib` stops new shards from starting while available memory is low.
+All generated work lives under the git-ignored `runs/` hierarchy: `index.sqlite`,
+`runs/<run-id>/`, `analysis/`, `batches/`, `priors/`, and `supervisor/`.
 
 ## ExperimentSpec
 
@@ -174,6 +264,8 @@ The research worker never uses the production bot, token or image. It needs:
    dashboard (same-owner matches are never rated), then
    `CHIPZEN_RESEARCH_CHALLENGE_READY=1`.
 
-Then `python scripts/run_experiment.py --spec experiments/specs/E0001-accounting-probe.json --workers 1`.
+Then inspect `uv run research plan` and use `uv run research run E0001`.
+Only already-approved research identities and explicitly unrated challenges
+are permitted. Implementation tests use fixtures and never live matches.
 A `matched` notification that is not explicitly unrated fails the run.
 The classification is measurement only and never triggers a pricing change.

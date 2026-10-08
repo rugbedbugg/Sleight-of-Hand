@@ -108,6 +108,9 @@ def run(
     min_free_mib: float = 1024,
     worker_prefix: str = "local-worker",
     log=print,
+    *,
+    stop_on_failure: bool = False,
+    require_resources: bool = False,
 ) -> dict:
     if max_workers < 1:
         raise ValueError("max_workers must be positive")
@@ -121,6 +124,7 @@ def run(
     results, failures = [], []
     free_slots = [f"{worker_prefix}-{i:02d}" for i in range(1, max_workers + 1)]
     low_memory_waits = 0
+    resource_blocked = None
     lowest_free = available_mib()
     context = multiprocessing.get_context("spawn")
     try:
@@ -129,9 +133,16 @@ def run(
             pending = list(tasks)
             while pending or running:
                 while pending and free_slots:
+                    if stop_on_failure and failures:
+                        break
                     free = available_mib()
                     if free is not None:
                         lowest_free = min(lowest_free or free, free)
+                    if require_resources and (free is None or free < min_free_mib):
+                        low_memory_waits += 1
+                        if not running:
+                            resource_blocked = "insufficient or unknown free memory"
+                        break
                     if free is not None and free < min_free_mib and running:
                         low_memory_waits += 1
                         break  # wait for a running shard to finish first
@@ -142,6 +153,8 @@ def run(
                     )
                     running[future] = (task, slot)
                 if not running:
+                    if resource_blocked or (stop_on_failure and failures):
+                        break
                     time.sleep(1)
                     continue
                 done, _ = wait(running, timeout=5, return_when=FIRST_COMPLETED)
@@ -175,5 +188,6 @@ def run(
         "results": results,
         "recovered_incomplete": recovered,
         "low_memory_waits": low_memory_waits,
+        "resource_blocked": resource_blocked,
         "lowest_available_mib": None if lowest_free is None else round(lowest_free),
     }

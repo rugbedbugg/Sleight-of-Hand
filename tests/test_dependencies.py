@@ -58,3 +58,12 @@ def test_no_second_requirements_manifest():
         if not any(part in skip or part.startswith(".") for part in relative.parts)
     )
     assert manifests == ["bots/chipzen/requirements.txt"]
+
+
+def test_project_installs_the_research_console_script():
+    assert PYPROJECT["tool"]["uv"]["package"] is True
+    assert PYPROJECT["project"]["scripts"] == {
+        "research": "sleight_of_hand.experiments.cli:main"
+    }
+    project = next(p for p in LOCK["package"] if p["name"] == "sleight-of-hand")
+    assert project["source"] == {"editable": "."}
