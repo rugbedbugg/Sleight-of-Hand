@@ -13,6 +13,7 @@ import math
 from collections import defaultdict
 from itertools import combinations
 from pathlib import Path
+from statistics import NormalDist
 
 from . import metrics
 from .journal import read_raw, verify
@@ -120,7 +121,9 @@ def _comparable(a, b) -> bool:
     )
 
 
-def analyze(root: Path, experiment_id: str, check_raw: bool = True) -> dict:
+def analyze(
+    root: Path, experiment_id: str, check_raw: bool = True, *, familywise: bool = False
+) -> dict:
     index = Index(Path(root) / "index.sqlite")
     specs = index.specs(experiment_id)
     if not specs:
@@ -161,7 +164,9 @@ def analyze(root: Path, experiment_id: str, check_raw: bool = True) -> dict:
                 and matches >= spec.stopping.min_matches,
                 "metrics": measured,
             }
-        for a, b in combinations(sorted(arms, key=lambda x: x["spec"].arm), 2):
+        pairs = list(combinations(sorted(arms, key=lambda x: x["spec"].arm), 2))
+        family_size = sum(_comparable(a, b) for a, b in pairs) if familywise else None
+        for a, b in pairs:
             if not _comparable(a, b):
                 continue
             comparison = {
@@ -173,18 +178,40 @@ def analyze(root: Path, experiment_id: str, check_raw: bool = True) -> dict:
                 comparison,
                 stratum["arms"][a["spec"].arm]["sufficient_sample"]
                 and stratum["arms"][b["spec"].arm]["sufficient_sample"],
+                family_size=family_size,
             )
             stratum["comparisons"].append(comparison)
         report["strata"].append(stratum)
     return report
 
 
-def recommend(comparison: dict, sufficient: bool) -> dict:
+def recommend(
+    comparison: dict, sufficient: bool, *, family_size: int | None = None
+) -> dict:
+    """Existing paired normal model, optionally Bonferroni-adjusted as one family.
+
+    The family is predeclared by the comparable arm set, never by observed
+    results. No new estimator or test is introduced; only its critical value
+    increases. Historical callers retain their original unadjusted reports.
+    """
+    if family_size is not None and (type(family_size) is not int or family_size < 1):
+        raise ValueError("comparison family must be positive")
     note = "Research evidence only; any change requires review, regression and explicit promotion."
     diff = comparison["paired_difference"]
     if not sufficient or diff["ci95"] is None:
         return {"verdict": "INSUFFICIENT_SAMPLE", "note": note}
     low, high = diff["ci95"]
+    if family_size is not None and family_size > 1:
+        z = NormalDist().inv_cdf(1 - 0.05 / (2 * family_size))
+        low = diff["mean_bb_per_100"] - z * diff["se"]
+        high = diff["mean_bb_per_100"] + z * diff["se"]
+    if family_size is not None:
+        comparison["multiplicity"] = {
+            "method": "bonferroni",
+            "family_size": family_size,
+            "family_alpha": 0.05,
+            "interval": [low, high],
+        }
     if low <= 0 <= high:
         return {"verdict": "NO_DIFFERENCE_DETECTED", "note": note}
     better = comparison["arms"][1] if low > 0 else comparison["arms"][0]

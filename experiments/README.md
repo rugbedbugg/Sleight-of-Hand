@@ -36,6 +36,7 @@ uv run research plan
 uv run research run E0003
 uv run research analyze E0003
 uv run research auto
+uv run research optimize O0001 --json
 ```
 
 `auto` executes approved research inside a declared authority envelope. It is
@@ -60,13 +61,14 @@ Production is always shown as `LOCKED / untouched`.
 
 | Field | Contract |
 |---|---|
-| `schema_version` | Exactly `1` |
+| `schema_version` | `1` for fixed-only programmes; `2` adds required `campaigns` |
 | `resources.workers` | Integer 1–32; the checked-in programme uses 2 |
 | `resources.min_free_mib` | Nonnegative memory floor; the checked-in programme uses 1024 MiB |
 | `experiments` | Ordered list, each with `id`, `governance`, `reason`, `specs`, `depends_on` |
 | `specs` | Explicit `{path, spec_hash}` references; relative paths stay inside the programme directory |
 | `governance` | `LOCAL_APPROVED`, `UNRATED_APPROVED`, or `REQUIRES_REVIEW` |
 | `depends_on` | Unique experiment IDs appearing earlier in the programme |
+| `campaigns` (v2) | Explicit `{path, campaign_hash}` references to reviewed local campaigns |
 
 Unknown fields, duplicate IDs/paths/arms, mismatched hashes, mixed strata,
 cyclic/forward dependencies, unapproved platforms, and unsupported provenance
@@ -74,7 +76,8 @@ are rejected. Local provenance is limited to LOCAL_SELFPLAY, SYNTHETIC,
 SCRIPTED_PROBE and BENCHMARK. Chipzen permits only LIVE_UNRATED/SCRIPTED_PROBE
 and still delegates availability and validation to its existing adapter.
 Changing this file changes authority and requires normal repository review.
-There is no automatic candidate generator or search-space expansion in v1.
+The [bounded optimizer](OPTIMIZER.md) generates candidates only inside a
+separately pinned campaign. It cannot expand its search space or budget.
 
 The initial programme explicitly lists E0001–E0005. E0004 depends on E0002 and
 requires the artifact hash already pinned by its immutable spec. The supervisor
@@ -84,7 +87,8 @@ prior-compilation interface; the resulting hash must match before E0004 runs.
 
 ### Finite execution and evidence
 
-An auto cycle makes one pass in dependency order, re-planning after each item.
+An auto cycle makes one pass in dependency order, re-planning after each item,
+then advances at most one batch for each eligible reviewed optimizer campaign.
 It delegates unfinished shards to the existing spawned-process scheduler and
 uses the existing analysis implementation with raw verification enabled.
 Completed work is verified and skipped; analysis receipts bind reports to the
@@ -141,7 +145,7 @@ uv run python scripts/build_local_prior.py --experiment E0002 --arm canonical \
 ```
 
 All generated work lives under the git-ignored `runs/` hierarchy: `index.sqlite`,
-`runs/<run-id>/`, `analysis/`, `batches/`, `priors/`, and `supervisor/`.
+`runs/<run-id>/`, `analysis/`, `batches/`, `priors/`, `supervisor/`, and `optimizer/`.
 
 ## ExperimentSpec
 

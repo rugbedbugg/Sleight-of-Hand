@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from . import programme, supervisor
+from .campaign import ReviewRequired
 from .model import Redactor
 from .runner import ROOT
 
@@ -19,10 +20,10 @@ def parser() -> argparse.ArgumentParser:
         description="Sleight-of-Hand Research Supervisor — approved research only; production LOCKED",
     )
     commands = result.add_subparsers(dest="command", required=True)
-    for command in ("status", "plan", "run", "analyze", "auto"):
+    for command in ("status", "plan", "run", "analyze", "auto", "optimize"):
         sub = commands.add_parser(command)
-        if command in {"run", "analyze"}:
-            sub.add_argument("experiment", help="approved experiment ID")
+        if command in {"run", "analyze", "optimize"}:
+            sub.add_argument("experiment", help="approved experiment or campaign ID")
         sub.add_argument(
             "--programme", type=Path, default=ROOT / "experiments" / "programme.json"
         )
@@ -54,6 +55,20 @@ def render(result: dict) -> str:
             lines.append(
                 f"  platform {state['arm']}: {state['status']} — {state['reason']}"
             )
+    for item in result.get("campaigns", []):
+        lines += [
+            f"{item['campaign']}  {item['status']}  [{item['governance']}]",
+            f"  campaign hash: {item['campaign_hash']}",
+            f"  algorithm: {item['algorithm']['kind']} v{item['algorithm']['version']}",
+            "  incumbent: " + json.dumps(item["incumbent"], sort_keys=True),
+            f"  generation: {item['generation']}",
+            "  steps: " + json.dumps(item["steps"], sort_keys=True),
+            f"  candidate budget: {item['candidate_budget_used']} / {item['candidate_budget_max']} ({item['candidate_budget_remaining']} remaining)",
+            f"  search: {item['search_state']}; confirmation: {item['confirmation_state']}",
+            f"  classification: {item['classification'] or 'PENDING'}; next: {item['intended_action']}",
+            f"  {item['reason']}",
+            "  production: LOCKED / untouched",
+        ]
     for action in result.get("actions", []):
         if action["action"] == "ANALYZE":
             for conclusion in action["analysis"]["conclusions"]:
@@ -103,6 +118,20 @@ def main(argv=None) -> int:
             )
         print(json.dumps(result, indent=2) if args.json else render(result))
         return 1 if result.get("disposition") == "FAILED" else 0
+    except ReviewRequired as exc:
+        reason = Redactor().text(str(exc))
+        print(
+            json.dumps(
+                {
+                    "status": "REQUIRES_REVIEW",
+                    "reason": reason,
+                    "production": "LOCKED / untouched",
+                }
+            )
+            if args.json
+            else f"research: REQUIRES_REVIEW — {reason}; production LOCKED / untouched"
+        )
+        return 0
     except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
         error = Redactor().text(f"{type(exc).__name__}: {exc}")
         print(

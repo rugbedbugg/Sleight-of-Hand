@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "resources": {
     "workers": 2,
     "min_free_mib": 1024
@@ -94,6 +94,12 @@
         }
       ],
       "depends_on": []
+    }
+  ],
+  "campaigns": [
+    {
+      "path": "O0001.json",
+      "campaign_hash": "sha256:11cabc1fbe990217896ee4be436ccebb3142d8820018b265937e11e9a0f576ff"
     }
   ]
 }

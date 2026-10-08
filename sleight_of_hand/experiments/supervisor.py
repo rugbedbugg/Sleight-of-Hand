@@ -107,7 +107,10 @@ def _past_failures(root: Path, digest: str) -> set[str]:
             except ValueError:
                 continue  # abrupt termination can leave a torn final record
             if event.get("kind") == "end" and event.get("programme_hash") == digest:
-                failed.update(f["experiment"] for f in event.get("failures", []))
+                failed.update(
+                    f.get("experiment", f.get("campaign"))
+                    for f in event.get("failures", [])
+                )
     return failed
 
 
@@ -271,6 +274,12 @@ def plan(programme: Programme, root: Path) -> dict:
         row.update(status=status, reason=reason, intended_action=action)
         rows.append(row)
         preceding[item.experiment_id] = row
+    from . import optimizer
+
+    campaigns = [
+        optimizer.inspect(c, programme, root, source, preceding)
+        for c in programme.campaigns
+    ]
     return Redactor()(
         {
             "schema_version": VERSION,
@@ -281,14 +290,17 @@ def plan(programme: Programme, root: Path) -> dict:
             "available_mib": free,
             "production": "LOCKED / untouched",
             "items": rows,
+            "campaigns": campaigns,
         }
     )
 
 
-def _analyze(root: Path, item: Item) -> dict:
+def _analyze(root: Path, item: Item, *, familywise: bool = False) -> dict:
     _verify_evidence(root, item)
     # Existing analysis checks raw checksums and recomputes all statistics.
-    report = analysis.analyze(root, item.experiment_id, check_raw=True)
+    report = analysis.analyze(
+        root, item.experiment_id, check_raw=True, familywise=familywise
+    )
     for stratum in report["strata"]:
         for arm in stratum["arms"].values():
             if arm["problems"]:
@@ -416,8 +428,13 @@ def _cycle(root: Path, initial: dict, arguments: list[str]):
 def execute(
     programme: Programme, root: Path, command="auto", experiment=None, arguments=()
 ) -> dict:
-    """One bounded pass in dependency order; never poll or generate new work."""
-    if experiment is not None:
+    """One bounded pass; each approved campaign advances at most one batch."""
+    from . import optimizer
+
+    if command == "optimize":
+        if experiment not in {c.identifier for c in programme.campaigns}:
+            raise ValueError("campaign is not in the approved programme")
+    elif experiment is not None:
         programme.item(experiment)  # refuse unapproved IDs before creating files
     root = Path(root).resolve()
     initial = plan(programme, root)
@@ -425,6 +442,8 @@ def execute(
     with _cycle(root, initial, list(arguments)) as (record, decision_path):
         # Re-plan under the lock, and after each item so dependencies can advance.
         for item in programme.items:
+            if command == "optimize":
+                continue
             if experiment is not None and item.experiment_id != experiment:
                 continue
             row = next(
@@ -529,10 +548,56 @@ def execute(
                 )
                 record("failure", **failures[-1])
                 break
+        if command in {"auto", "optimize"} and not failures and not stops:
+            for campaign in programme.campaigns:
+                if experiment is not None and campaign.identifier != experiment:
+                    continue
+                current = plan(programme, root)
+                row = next(
+                    r
+                    for r in current["campaigns"]
+                    if r["campaign"] == campaign.identifier
+                )
+                record("inspect_campaign", item=row)
+                if row["status"] in {"FAILED", "REQUIRES_REVIEW"}:
+                    (failures if row["status"] == "FAILED" else stops).append(row)
+                    break
+                if row["status"] == "BLOCKED":
+                    continue
+                try:
+                    progress = optimizer.advance(
+                        campaign, programme, root, current["source"]
+                    )
+                    actions.extend(progress)
+                    for action in progress:
+                        record("action_finished", **action)
+                    after = next(
+                        r
+                        for r in plan(programme, root)["campaigns"]
+                        if r["campaign"] == campaign.identifier
+                    )
+                    if after["status"] in {"FAILED", "REQUIRES_REVIEW", "BLOCKED"}:
+                        break
+                except Exception as exc:  # noqa: BLE001 - durable failed cycle
+                    failure = {
+                        "campaign": campaign.identifier,
+                        "status": "REQUIRES_REVIEW"
+                        if isinstance(exc, optimizer.ReviewRequired)
+                        else "FAILED",
+                        "reason": f"{type(exc).__name__}: {exc}",
+                    }
+                    (
+                        stops if failure["status"] == "REQUIRES_REVIEW" else failures
+                    ).append(failure)
+                    record("failure", **failure)
+                    break
         final = plan(programme, root)
         for stop in failures + stops:
+            key = "campaign" if "campaign" in stop else "experiment"
             row = next(
-                r for r in final["items"] if r["experiment"] == stop["experiment"]
+                r
+                for r in final["items"] + final["campaigns"]
+                if r.get(key) == stop[key]
             )
             row.update(
                 status=stop["status"],
@@ -543,10 +608,13 @@ def execute(
                     "BLOCKED": "WAIT_FOR_RESOURCES",
                 }[stop["status"]],
             )
+            if key == "campaign":
+                row["classification"] = stop["status"]
         selected = [
             r
-            for r in final["items"]
-            if experiment is None or r["experiment"] == experiment
+            for r in final["items"] + final["campaigns"]
+            if experiment is None
+            or r.get("experiment", r.get("campaign")) == experiment
         ]
         disposition = (
             "FAILED"

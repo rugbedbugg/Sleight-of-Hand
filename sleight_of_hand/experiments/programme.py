@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from .campaign import Campaign, ReviewRequired
+from .campaign import load as load_campaign
 from .model import Provenance, assert_no_secrets, canonical, exact, name, sha256
 from .spec import ExperimentSpec
 from .spec import load as load_spec
@@ -37,6 +39,7 @@ class Programme:
     workers: int
     min_free_mib: float
     digest: str
+    campaigns: tuple[Campaign, ...] = ()
 
     def item(self, experiment_id: str) -> Item:
         for item in self.items:
@@ -59,9 +62,14 @@ def load(path: Path) -> Programme:
     value = json.loads(
         path.read_text(encoding="utf-8"), object_pairs_hook=_unique_fields
     )
-    exact(value, {"schema_version", "resources", "experiments"})
+    version = value.get("schema_version")
+    exact(
+        value,
+        {"schema_version", "resources", "experiments"}
+        | ({"campaigns"} if version == 2 else set()),
+    )
     assert_no_secrets(value, "research programme")
-    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+    if type(version) is not int or version not in {1, 2}:
         raise ValueError("unsupported programme schema")
     resources = exact(value["resources"], {"workers", "min_free_mib"})
     workers, free = resources["workers"], resources["min_free_mib"]
@@ -134,6 +142,40 @@ def load(path: Path) -> Programme:
             )
         )
         seen.add(identifier)
+    campaigns = []
+    if version == 2:
+        if type(value["campaigns"]) is not list:
+            raise ValueError("campaigns must be an explicit list")
+        for ref in value["campaigns"]:
+            exact(ref, {"path", "campaign_hash"})
+            relative = Path(ref["path"])
+            source = (path.parent / relative).resolve()
+            if (
+                relative.is_absolute()
+                or not source.is_relative_to(path.parent)
+                or source in paths
+            ):
+                raise ValueError("invalid campaign path")
+            paths.add(source)
+            campaign = load_campaign(source)
+            if campaign.digest != ref["campaign_hash"]:
+                raise ReviewRequired("campaign differs from programme hash")
+            c = campaign.config
+            if campaign.identifier in seen:
+                raise ValueError("duplicate campaign ID")
+            if not set(c["depends_on"]) <= {i.experiment_id for i in items}:
+                raise ValueError("campaign dependencies must be fixed experiments")
+            if (
+                c["resources"]["workers"] > workers
+                or c["resources"]["min_free_mib"] < free
+            ):
+                raise ValueError("campaign resources exceed programme authority")
+            seen.add(campaign.identifier)
+            campaigns.append(campaign)
     return Programme(
-        tuple(items), workers, float(free), "sha256:" + sha256(canonical(value))
+        tuple(items),
+        workers,
+        float(free),
+        "sha256:" + sha256(canonical(value)),
+        tuple(campaigns),
     )

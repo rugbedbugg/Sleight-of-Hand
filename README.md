@@ -105,10 +105,15 @@ The [research supervisor](experiments/README.md) executes the reviewed
 [programme](experiments/programme.json), resumes unfinished fixed work,
 verifies evidence, and records non-binding conclusions. Missing Chipzen
 credentials block online work while eligible local work continues. Production
-is locked: no policy changes, new trials, promotion, or deployment occurs.
+is locked: no policy change, promotion, or deployment occurs. The reviewed
+[bounded optimizer](experiments/OPTIMIZER.md) may propose new immutable local
+trials inside O0001's approved search space and fixed budget. Each `auto` cycle
+advances at most one campaign generation or held-out confirmation batch.
 Inspect `plan` before executing the programme. Use `research run E0003` or
 `research analyze E0003` for one approved experiment, and `--json` for structured
 output. All commands support `--programme` and `--root` after the subcommand.
+Use `research optimize O0001` to advance only that campaign. Research
+recommendations remain non-binding, including a PROMISING confirmation.
 
 ## Running things
 

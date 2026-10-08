@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "id": "O0001",
+  "governance": "LOCAL_APPROVED",
+  "purpose": "Bounded local optimization of the five existing PolicyParams; E0003 is historical motivation only. Non-binding research; no promotion.",
+  "campaign_seed": 202610080001,
+  "template": {
+    "path": "specs/E0003-canonical.json",
+    "spec_hash": "45d99c7cb7ad35bf1915be66ce767d56fe2ec18e5427907cbe41c60a4018bcc6"
+  },
+  "policy_revision": "sha256:8e51fc380811254489e995ebc6400c0aad1ee56d334003c390085806ebfa6f99",
+  "initial": {
+    "value_bet_threshold": 0.55,
+    "call_threshold": 0.35,
+    "bluff_freq": 0.15,
+    "aggression": 0.8,
+    "steepness": 8.0
+  },
+  "parameters": [
+    {
+      "parameter": "value_bet_threshold",
+      "min": 0.45,
+      "max": 0.65,
+      "initial_step": 0.05,
+      "min_step": 0.0125
+    },
+    {
+      "parameter": "call_threshold",
+      "min": 0.25,
+      "max": 0.45,
+      "initial_step": 0.05,
+      "min_step": 0.0125
+    },
+    {
+      "parameter": "bluff_freq",
+      "min": 0.05,
+      "max": 0.25,
+      "initial_step": 0.05,
+      "min_step": 0.0125
+    },
+    {
+      "parameter": "aggression",
+      "min": 0.7,
+      "max": 0.95,
+      "initial_step": 0.05,
+      "min_step": 0.0125
+    },
+    {
+      "parameter": "steepness",
+      "min": 4.0,
+      "max": 12.0,
+      "initial_step": 2.0,
+      "min_step": 0.5
+    }
+  ],
+  "algorithm": {
+    "kind": "bounded-pattern-search",
+    "version": 1
+  },
+  "search_stopping": {
+    "min_matches": 20,
+    "max_matches": 20,
+    "min_hands": 2000,
+    "max_hands": 2000,
+    "hands_per_match": 100,
+    "matches_per_shard": 5,
+    "evaluation_interval_matches": 10,
+    "early_stopping": "none"
+  },
+  "confirmation_stopping": {
+    "min_matches": 60,
+    "max_matches": 60,
+    "min_hands": 6000,
+    "max_hands": 6000,
+    "hands_per_match": 100,
+    "matches_per_shard": 10,
+    "evaluation_interval_matches": 20,
+    "early_stopping": "none"
+  },
+  "max_generations": 4,
+  "max_generated_vectors": 45,
+  "objective": "paired-bb-per-100-bonferroni-all-pairs",
+  "resources": {
+    "workers": 2,
+    "min_free_mib": 1024
+  },
+  "depends_on": [
+    "E0003"
+  ],
+  "created_at": "2026-10-08T00:00:00Z",
+  "fixed_policy": {
+    "samples": 128,
+    "opponent_memory": true,
+    "historical_prior": null
+  },
+  "seed_derivation": "sha256-domain-separated-v1"
+}
