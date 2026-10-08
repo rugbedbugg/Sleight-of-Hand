@@ -101,6 +101,8 @@ jobs:
           fi
 
       - name: The lock and the checkout are unchanged
+        # mise-action writes the CI-only mise.toml above; nothing else may appear.
         run: |
           git diff --exit-code -- uv.lock
-          test -z "$(git status --porcelain)" || { git status --short; exit 1; }
+          changes="$(git status --porcelain -- . ':(exclude)mise.toml')"
+          test -z "$changes" || { echo "$changes"; exit 1; }
