@@ -304,8 +304,15 @@ def test_review_boundary_never_executes(tmp_path, monkeypatch, stale):
     run = Mock(side_effect=AssertionError("governance bypass"))
     monkeypatch.setattr(scheduler, "run", run)
     result = supervisor.execute(programme.load(path), tmp_path / "runs")
-    assert result["disposition"] == "REQUIRES_REVIEW"
-    assert result["governance_stops"] and not result["actions"]
+    assert result["disposition"] == "REQUIRES_REVIEW" and not result["actions"]
+    if stale:
+        # A verified stale-policy boundary is item-local: skipped, never run.
+        row = result["items"][0]
+        assert row["status"] == "REQUIRES_REVIEW"
+        assert row["policy_state"] == "STALE_REQUIRES_REVIEW"
+        assert not result["governance_stops"]
+    else:
+        assert result["governance_stops"]
 
 
 def test_journal_and_output_never_echo_secrets(tmp_path, monkeypatch):

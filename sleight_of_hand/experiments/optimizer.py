@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import campaign as authority
 from . import journal, scheduler, screening, supervisor
-from .campaign import ReviewRequired
+from .campaign import ReviewRequired, StalePolicy
 from .model import Redactor, assert_no_secrets, canonical, exact, sha256
 from .programme import Item, Programme
 from .spec import ExperimentSpec, dump
@@ -371,15 +371,19 @@ def _authorized(campaign, programme, payload):
 
 
 def reconstruct(campaign, programme, root, source, *, verify=False):
-    """Read-only replay. Every transition is checked against its authority/evidence."""
+    """Read-only replay. Every transition is checked against its authority/evidence.
+
+    History is validated against the policy revision the campaign pins and its
+    events recorded, not today's runtime policy. Only afterwards is the epoch
+    decided: durably complete history under an older revision is historical
+    evidence; anything unfinished under an older revision raises StalePolicy.
+    Replay never implies that execution is authorized (see ``advance``).
+    """
     path = directory(root, campaign)
     events = _events(path)
     c, state, batches = campaign.config, initial(campaign), []
-    if (
-        c["policy_revision"] != source["policy_revision"]
-        or c["governance"] != "LOCAL_APPROVED"
-    ):
-        raise ReviewRequired("campaign policy fingerprint/governance mismatch")
+    if c["governance"] != "LOCAL_APPROVED":
+        raise ReviewRequired("campaign governance requires review")
     for index, event in enumerate(events):
         kind, payload = event["kind"], event["payload"]
         if state["classification"]:
@@ -518,7 +522,37 @@ def reconstruct(campaign, programme, root, source, *, verify=False):
             and spec.spec_hash not in hashes
         ):
             raise ValueError("unauthorized ExperimentSpec in campaign")
+    if c["policy_revision"] != source["policy_revision"] and state[
+        "classification"
+    ] not in authority.COMPLETIONS | {"FAILED"}:
+        raise StalePolicy(
+            f"campaign pinned to policy {c['policy_revision']} is unfinished; "
+            f"current runtime policy is {source['policy_revision']}; preserved "
+            "evidence is kept and no further execution is authorized",
+            state,
+        )
     return state, events
+
+
+def policy_state(campaign, source, state):
+    """Epoch of a successfully replayed campaign row."""
+    if campaign.config["policy_revision"] == source["policy_revision"]:
+        return authority.CURRENT
+    if state["classification"] in authority.COMPLETIONS:
+        return authority.HISTORICAL_COMPLETE
+    return authority.UNVERIFIED  # e.g. a FAILED halt keeps failure semantics
+
+
+def execution_refusal(campaign, source):
+    """Why new campaign work may not run now; replay success is not enough."""
+    if campaign.config["policy_revision"] != source["policy_revision"]:
+        return (
+            f"campaign is pinned to policy {campaign.config['policy_revision']}; "
+            f"current runtime policy is {source['policy_revision']}"
+        )
+    if screening_campaign(campaign):
+        return screening.centre_refusal(campaign)
+    return None
 
 
 def dependency_states(campaign, preceding):
@@ -553,8 +587,15 @@ def inspect(campaign, programme, root, source, fixed):
     status, reason, action = "PENDING", "approved local campaign", "GENERATE_AND_RUN"
     dependencies = dependency_states(campaign, fixed)
     unmet = [d for d in dependencies if not d["met"]]
+    recorded = campaign.config["policy_revision"]
+    epoch = (
+        authority.CURRENT
+        if recorded == source["policy_revision"]
+        else authority.UNVERIFIED
+    )
     try:
         state, _ = reconstruct(campaign, programme, root, source)
+        epoch = policy_state(campaign, source, state)
         if campaign.identifier in supervisor._past_failures(
             Path(root), programme.digest
         ):
@@ -570,6 +611,8 @@ def inspect(campaign, programme, root, source, fixed):
                 else "COMPLETE"
             )
             reason, action = state["stop_reason"], "NONE"
+        elif refusal := execution_refusal(campaign, source):
+            status, reason, action = "REQUIRES_REVIEW", refusal, "REVIEW"
         elif unmet:
             status, reason, action = (
                 "BLOCKED",
@@ -608,6 +651,10 @@ def inspect(campaign, programme, root, source, fixed):
                 )
             elif stop_reason(campaign, state):
                 action = "STOP_SEARCH"
+    except StalePolicy as exc:
+        # Verified history, unfinished under an older policy: item-local review.
+        state, epoch = exc.state, authority.STALE_REQUIRES_REVIEW
+        status, reason, action = "REQUIRES_REVIEW", str(exc), "REVIEW"
     except ReviewRequired as exc:
         status, reason, action = "REQUIRES_REVIEW", str(exc), "REVIEW"
     except (ValueError, OSError, RuntimeError, KeyError, TypeError) as exc:
@@ -640,6 +687,7 @@ def inspect(campaign, programme, root, source, fixed):
         if status in {"FAILED", "REQUIRES_REVIEW"}
         else state["classification"],
         "production": "LOCKED / untouched",
+        **authority.epoch_fields(epoch, recorded, source),
     }
     if screening_campaign(campaign):
         c = campaign.config
@@ -674,6 +722,12 @@ def advance(campaign, programme, root, source):
     state, events = reconstruct(campaign, programme, root, source, verify=True)
     if state["classification"]:
         return []
+    # Execution authority is separate from successful replay: nothing new is
+    # recorded, materialized or run unless the current runtime policy is the
+    # campaign's reviewed policy.
+    refusal = execution_refusal(campaign, source)
+    if refusal:
+        raise ReviewRequired(refusal)
     actions = []
 
     def record(kind, payload):

@@ -38,6 +38,19 @@ def _condition(value: dict) -> str:
     return f"{value['status']} / {value['classification']}"
 
 
+def _epoch(item: dict) -> list[str]:
+    """Only non-current rows get a policy line; current output is unchanged."""
+    if item.get("policy_state", "CURRENT") == "CURRENT":
+        return []
+    return [
+        (
+            f"  policy: {item['policy_state']} — recorded "
+            f"{item['recorded_policy_revision']}; current {item['current_policy_revision']}"
+        ),
+        f"  {item['policy_note']}",
+    ]
+
+
 def render(result: dict) -> str:
     source = result["source"]
     lines = [
@@ -56,6 +69,7 @@ def render(result: dict) -> str:
             f"  shards: {item['completed_shards']} complete, {item['pending_shards']} pending, {item['incomplete_runs']} incomplete runs, {item['running_runs']} running",
             f"  analysis: {item['analysis_status']}; next: {item['intended_action']}",
             f"  {item['reason']}",
+            *_epoch(item),
         ]
         for state in item["platform_statuses"]:
             lines.append(
@@ -95,6 +109,7 @@ def render(result: dict) -> str:
         lines += [
             f"  classification: {item['classification'] or 'PENDING'}; next: {item['intended_action']}",
             f"  {item['reason']}",
+            *_epoch(item),
             "  production: LOCKED / untouched",
         ]
     for action in result.get("actions", []):
@@ -115,7 +130,9 @@ def render(result: dict) -> str:
                 if result["nothing_to_do"]
                 else "All selected approved work is complete.",
                 "BLOCKED": "No eligible work remains; blocked items require action.",
-                "REQUIRES_REVIEW": "Stopped at a governance boundary.",
+                "REQUIRES_REVIEW": "Stopped at a governance boundary."
+                if result["governance_stops"]
+                else "No eligible work remains; stale items require review.",
                 "FAILED": "Stopped for investigation.",
                 "PENDING": "Pending work remains.",
             }[result["disposition"]],

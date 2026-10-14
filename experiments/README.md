@@ -53,7 +53,8 @@ item's arms, pinned hashes, platform/provenance, availability and reason, shard
 counts, incomplete/live runs, analysis status, governance and intended action.
 The current source SHA and policy fingerprint are separate from a historical
 spec's `source_sha`. A policy-inert infrastructure change does not stale a spec;
-a fingerprint mismatch requires review and never rewrites the historical spec.
+a fingerprint change never rewrites the historical spec (see
+[policy epochs](#policy-epochs-and-historical-evidence)).
 Production is always shown as `LOCKED / untouched`.
 
 ### Reviewed programme
@@ -147,6 +148,75 @@ final disposition follow. A crash can leave an unfinished record; it is never
 reported as a successful cycle. These records are supervisor decisions, not raw
 poker evidence. The existing credential redactor scrubs all output and records;
 environment values are never copied into decision records.
+
+### Policy epochs and historical evidence
+
+Two statements are kept separate:
+
+| Term | Meaning |
+|---|---|
+| policy revision | Identity of the runtime policy that produced evidence: the `policy_revision` pinned in a spec or campaign and recorded in run manifests and campaign events. It is never rewritten. |
+| current runtime revision | `runner.policy_revision()` of this checkout: the only policy that may execute now. |
+| historical complete | Verified, immutable evidence produced under an **older** revision. |
+
+Every experiment and campaign row reports `policy_state`,
+`recorded_policy_revision`, `current_policy_revision` and `policy_note`
+(non-current rows also print a `policy:` line):
+
+| Recorded vs current | Work | Status / `policy_state` | Execution |
+|---|---|---|---|
+| same | complete | COMPLETE / CURRENT | none needed |
+| same | unfinished | normal governance / CURRENT | as approved |
+| older | complete, verified | COMPLETE / HISTORICAL_COMPLETE | never again |
+| older | unfinished | REQUIRES_REVIEW / STALE_REQUIRES_REVIEW | never |
+| any | integrity or authority failure | FAILED or REQUIRES_REVIEW / UNVERIFIED | never |
+
+A fixed experiment is historical complete only when every approved shard is
+complete and its existing analysis receipt is current. Unauthorized specs,
+out-of-horizon or failed shards still require review or fail first, and
+`auto` still verifies raw and derived evidence before accepting it. Complete
+evidence whose analysis receipt is missing, stale or unverifiable requires
+review: no analysis is generated under a newer policy, and an explicit
+`research analyze` of a historical item stops for review. Historical
+re-analysis would need a separately reviewed protocol.
+
+A campaign replays its whole journal against the revision and authority it
+recorded (campaign hash, legacy programme prefix or per-campaign authority,
+dependency identities, generated specs, reports, receipts, hash chain). Only
+then is its epoch decided: a durable final classification under an older
+revision is historical complete and keeps its exact classification, incumbent,
+budget, stop reason and hashes; anything unfinished (pending search or
+screening, awaiting or partial confirmation, generated specs awaiting work)
+requires review. A FAILED halt stays FAILED. Successful replay never grants
+execution: `advance()` separately refuses any new event, spec or shard unless
+the current revision equals the campaign's reviewed revision (and, for a
+screen, its centre equals today's canonical defaults; that check runs at
+execution, not load, so a future default change cannot make history
+unreadable). The worker firewall in `runner.run_shard` is unchanged: a spec
+whose revision differs from the current one always refuses to run.
+
+Dependencies state facts about verified results, not executability. A
+historical complete campaign or experiment satisfies a later dependency's
+COMPLETE/classification requirement; its identity remains pinned in the
+dependent campaign's authority, so altering it still invalidates the
+dependent. A dependency on stale unfinished work is unmet (BLOCKED).
+
+A verified stale-policy REQUIRES_REVIEW is **item-local**: a full `auto` pass
+records it as skipped and continues with unrelated current work. Selecting it
+explicitly (`research run E0001`, `research analyze ...`,
+`research optimize O000N`) stops the cycle for review. Every other
+REQUIRES_REVIEW (governance, authority, unapproved specs, horizon) is still a
+cycle-level stop. Cycle disposition, in order: FAILED; cycle-level
+REQUIRES_REVIEW; resource stop BLOCKED; PENDING while any selected row has
+eligible work; REQUIRES_REVIEW when only item-local reviews remain; BLOCKED;
+COMPLETE. So after a policy change a stale E0001 cannot mask an eligible new
+campaign, and once only stale work remains the cycle says it needs review.
+
+Historical complete does **not** mean executable today, applicable unchanged
+to a newer policy, promoted, or production-approved. It only means the
+historical research claim is still internally valid for the policy revision
+that produced it. Comparing epochs requires an explicit new reviewed
+experiment or campaign pinned to the current revision.
 
 ### Developer compatibility entry points
 

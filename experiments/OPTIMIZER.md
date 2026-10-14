@@ -279,8 +279,11 @@ recomputes selection from its hash-bound report. There is no trusted mutable
 state cache. Runtime execution also verifies raw and derived evidence through
 the existing supervisor. Unexpected specs in the generated directory or index,
 altered bytes/permissions, missing materialized specs, inconsistent budgets,
-changed reports, seed overlap, or an invalid journal fail closed. Governance,
-campaign authority or policy fingerprint changes require review.
+changed reports, seed overlap, or an invalid journal fail closed. Governance or
+campaign authority changes require review. Replay validates history against
+its recorded policy revision; after a policy change, a completed campaign is
+historical complete and an unfinished one requires review and never advances
+(see [policy epochs](README.md#policy-epochs-and-historical-evidence)).
 
 The batch event reserves budget before files or work exist. Partial spec
 materialization resumes the same batch; a ready event makes missing specs an

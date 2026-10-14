@@ -33,6 +33,48 @@ class ReviewRequired(ValueError):
     """Reviewed authority no longer matches its declared identity."""
 
 
+#: Policy epochs: how recorded evidence relates to the current runtime policy.
+CURRENT = "CURRENT"
+HISTORICAL_COMPLETE = "HISTORICAL_COMPLETE"
+STALE_REQUIRES_REVIEW = "STALE_REQUIRES_REVIEW"
+#: The epoch is unknown because integrity or authority checks did not pass.
+UNVERIFIED = "UNVERIFIED"
+
+
+def epoch_fields(epoch, recorded, source):
+    """Row fields shared by fixed experiments and campaigns."""
+    note = {
+        CURRENT: None,
+        HISTORICAL_COMPLETE: (
+            "historical evidence remains valid for the recorded policy revision; "
+            "no further execution is authorized"
+        ),
+        STALE_REQUIRES_REVIEW: (
+            "unfinished work is pinned to an older policy revision; it will not "
+            "run under the current policy without a new reviewed spec/campaign"
+        ),
+        UNVERIFIED: "policy epoch unverified; integrity or authority "
+        "checks did not pass",
+    }[epoch]
+    return {
+        "policy_state": epoch,
+        "recorded_policy_revision": recorded,
+        "current_policy_revision": source["policy_revision"],
+        "policy_note": note,
+    }
+
+
+class StalePolicy(ReviewRequired):
+    """Verified but unfinished work pinned to an older runtime policy.
+
+    An item-local boundary: the preserved state is reported, nothing executes.
+    """
+
+    def __init__(self, message, state=None):
+        super().__init__(message)
+        self.state = state
+
+
 def unique_fields(pairs):
     value = {}
     for key, item in pairs:

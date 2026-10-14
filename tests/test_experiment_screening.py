@@ -387,12 +387,21 @@ def test_duplicate_json_fields_rejected(tmp_path):
 def test_centre_is_exactly_canonical(tmp_path):
     c = campaign.load(CONFIG)
     assert c.initial == DEFAULT_PARAMS.__dict__
-    shifted = screening_config(
+    assert screening.centre_refusal(c) is None
+    # Loading never depends on today's defaults; execution is refused instead.
+    _, _, path = fixture(
         tmp_path,
         change=lambda v: v["factors"][3].update(low=0.7, center=0.75, high=0.8),
     )
+    p = programme.load(path)
+    shifted = p.campaigns[0]
+    assert "canonical" in screening.centre_refusal(shifted)
+    root = tmp_path / "runs"
+    row = supervisor.plan(p, root)["campaigns"][0]
+    assert row["status"] == "REQUIRES_REVIEW" and "canonical" in row["reason"]
     with pytest.raises(ReviewRequired, match="canonical"):
-        campaign.load(shifted)
+        optimizer.advance(shifted, p, root, runner.source_state())
+    assert not root.exists()
 
 
 # --- design ------------------------------------------------------------------
@@ -1151,8 +1160,10 @@ def test_tampering_fails_closed(tmp_path, defect):
     assert not result["actions"] and result["disposition"] == "FAILED"
 
 
-@pytest.mark.parametrize("identity", ["campaign", "dependency", "policy"])
+@pytest.mark.parametrize("identity", ["campaign", "dependency"])
 def test_authority_changes_require_review(tmp_path, identity):
+    # A newer policy makes completed history HISTORICAL_COMPLETE instead; see
+    # tests/test_experiment_policy_epochs.py.
     path = write_programme(tmp_path / "authority", [[small()]])
     second = screening_config(
         tmp_path / "authority",
@@ -1178,8 +1189,6 @@ def test_authority_changes_require_review(tmp_path, identity):
         p = replace(
             p, items=tuple(replace(i, governance="REQUIRES_REVIEW") for i in p.items)
         )
-    else:
-        source["policy_revision"] = "sha256:" + "0" * 64
     with pytest.raises(ReviewRequired):
         optimizer.reconstruct(c, p, root, source)
 
@@ -1232,9 +1241,7 @@ def test_legacy_history_survives_appended_campaign_byte_for_byte(tmp_path, monke
     assert tree(optimizer.directory(root, c)) == before
 
 
-@pytest.mark.parametrize(
-    "change", ["experiments", "campaign", "policy", "spec", "evidence"]
-)
+@pytest.mark.parametrize("change", ["experiments", "campaign", "spec", "evidence"])
 def test_legacy_history_still_fails_closed(tmp_path, change):
     c, _, path, root = legacy_history(tmp_path)
     extended = append_campaign(path, tmp_path)
@@ -1261,9 +1268,7 @@ def test_legacy_history_still_fails_closed(tmp_path, change):
         config = c.config
         config["purpose"] = "changed"
         c = replace(c, config_json=canonical(config).decode())
-    elif change == "policy":
-        source["policy_revision"] = "sha256:" + "0" * 64
-    if change in {"experiments", "campaign", "policy"}:
+    if change in {"experiments", "campaign"}:
         with pytest.raises(ReviewRequired):
             optimizer.reconstruct(c, extended, root, source)
         return

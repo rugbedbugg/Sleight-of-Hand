@@ -59,9 +59,12 @@ Unknown or duplicate fields, duplicate factor symbols or parameters, a missing
 PolicyParam, `low < center < high` violations, a centre that is not the exact
 midpoint, levels outside the policy domain, a generator or defining relation
 that does not reference exactly the declared factors, a resolution below V, a
-different family size, or any other comparison family are rejected. The centre
-vector must equal the current canonical `DEFAULT_PARAMS`; otherwise loading
-requires review. Every generated vector is revalidated.
+different family size, or any other comparison family are rejected. Before any
+execution the centre vector must equal the current canonical `DEFAULT_PARAMS`;
+otherwise the campaign requires review and nothing runs. This check is made at
+execution rather than load so completed history stays readable after a future
+policy change (see [policy epochs](README.md#policy-epochs-and-historical-evidence)).
+Every generated vector is revalidated.
 
 ## Factors
 

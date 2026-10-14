@@ -12,6 +12,13 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 
 from . import analysis, journal, scheduler
+from .campaign import (
+    CURRENT,
+    HISTORICAL_COMPLETE,
+    STALE_REQUIRES_REVIEW,
+    UNVERIFIED,
+    epoch_fields,
+)
 from .model import Availability, Redactor, canonical, sha256
 from .platforms import get_platform
 from .platforms.priors import memory_for
@@ -149,6 +156,9 @@ def plan(programme: Programme, root: Path) -> dict:
             "analysis_status": "CURRENT" if current else "PENDING",
             "platform_statuses": platforms,
         }
+        recorded = sorted({s.policy_revision for s in specs})
+        stale = recorded != [source["policy_revision"]]
+        epoch = UNVERIFIED if stale else CURRENT
         try:
             for spec in specs:
                 platform = get_platform(spec.platform)
@@ -160,7 +170,8 @@ def plan(programme: Programme, root: Path) -> dict:
                         "reason": state.reason,
                     }
                 )
-                platform.prepare(spec)  # configuration validation only; no matches
+                if not stale:  # stale specs never execute; nothing to prepare
+                    platform.prepare(spec)  # configuration validation only
             unapproved = [
                 s
                 for s in snapshot.registered
@@ -190,7 +201,7 @@ def plan(programme: Programme, root: Path) -> dict:
                 for r in runs
             )
             missing_prior = False
-            for spec in specs:
+            for spec in specs if not stale else ():
                 prior = spec.policy_config.get("historical_prior")
                 if prior:
                     if not Path(prior["bundle_path"]).is_file():
@@ -199,12 +210,6 @@ def plan(programme: Programme, root: Path) -> dict:
                         memory_for(spec.policy_config)
             if item.governance == "REQUIRES_REVIEW":
                 status, reason, action = "REQUIRES_REVIEW", item.reason, "REVIEW"
-            elif any(s.policy_revision != source["policy_revision"] for s in specs):
-                status, reason, action = (
-                    "REQUIRES_REVIEW",
-                    "stale policy fingerprint; immutable specs were not changed",
-                    "REVIEW",
-                )
             elif unapproved:
                 status, reason, action = (
                     "REQUIRES_REVIEW",
@@ -228,6 +233,28 @@ def plan(programme: Programme, root: Path) -> dict:
                     "BLOCKED",
                     "another worker owns unfinished work",
                     "WAIT_FOR_USER",
+                )
+            elif stale and not pending and current:
+                # Verified complete evidence keeps its recorded attribution.
+                epoch = HISTORICAL_COMPLETE
+                status, reason, action = (
+                    "COMPLETE",
+                    "historical evidence remains valid for recorded policy "
+                    + ", ".join(recorded)
+                    + "; no further execution is authorized",
+                    "NONE",
+                )
+            elif stale:
+                epoch = STALE_REQUIRES_REVIEW
+                status, reason, action = (
+                    "REQUIRES_REVIEW",
+                    "stale policy fingerprint: "
+                    + ("execution" if pending else "verified analysis")
+                    + " remains for policy "
+                    + ", ".join(recorded)
+                    + "; it will not run under the current policy and immutable "
+                    "specs were not changed",
+                    "REVIEW",
                 )
             elif any(preceding[d]["status"] != "COMPLETE" for d in item.depends_on):
                 status, reason, action = (
@@ -266,12 +293,14 @@ def plan(programme: Programme, root: Path) -> dict:
                     "WAIT_FOR_RESOURCES",
                 )
         except Exception as exc:  # noqa: BLE001 - one bad item must be inspectable
+            epoch = UNVERIFIED if stale else CURRENT
             status, reason, action = (
                 "FAILED",
                 f"{type(exc).__name__}: {exc}",
                 "INVESTIGATE",
             )
         row.update(status=status, reason=reason, intended_action=action)
+        row.update(epoch_fields(epoch, ", ".join(recorded), source))
         rows.append(row)
         preceding[item.experiment_id] = row
     from . import optimizer
@@ -383,20 +412,37 @@ def _verify_evidence(root: Path, item: Item) -> None:
 SETTLED = frozenset({"COMPLETE", "BLOCKED", "FAILED", "REQUIRES_REVIEW"})
 
 
-def disposition(failures: list, stops: list, selected: list) -> str:
-    """Overall cycle state; one blocked item never masks other eligible work.
+def item_local_review(row: dict) -> bool:
+    """A verified stale-policy boundary that concerns only this row.
 
-    A cycle-level stop (resources) blocks everything. Otherwise BLOCKED is
-    reported only when every unfinished selected row is itself blocked.
+    Every other REQUIRES_REVIEW (governance, authority, unapproved specs,
+    horizon) remains a cycle-level stop.
+    """
+    return (
+        row["status"] == "REQUIRES_REVIEW"
+        and row.get("policy_state") == STALE_REQUIRES_REVIEW
+    )
+
+
+def disposition(failures: list, stops: list, selected: list) -> str:
+    """Overall cycle state; one blocked or stale item never masks eligible work.
+
+    Failures and cycle-level governance stops take precedence; a resource stop
+    blocks everything. Otherwise eligible work is PENDING; then item-local
+    stale-policy reviews; BLOCKED only when every unfinished row is blocked.
     """
     if failures or any(r["status"] == "FAILED" for r in selected):
         return "FAILED"
-    if any(s["status"] == "REQUIRES_REVIEW" for s in stops + selected):
+    if any(s["status"] == "REQUIRES_REVIEW" for s in stops) or any(
+        r["status"] == "REQUIRES_REVIEW" and not item_local_review(r) for r in selected
+    ):
         return "REQUIRES_REVIEW"
     if stops:
         return "BLOCKED"
     if any(r["status"] not in SETTLED for r in selected):
         return "PENDING"
+    if any(item_local_review(r) for r in selected):
+        return "REQUIRES_REVIEW"
     if any(r["status"] == "BLOCKED" for r in selected):
         return "BLOCKED"
     return "COMPLETE"
@@ -476,8 +522,22 @@ def execute(
                 if r["experiment"] == item.experiment_id
             )
             record("inspect", item=row)
+            if experiment is None and item_local_review(row):
+                # Stale unfinished work is skipped, never run, in a full pass.
+                record("skipped", experiment=item.experiment_id, reason=row["reason"])
+                continue
             if row["status"] in {"FAILED", "REQUIRES_REVIEW"}:
                 (failures if row["status"] == "FAILED" else stops).append(row)
+                break
+            if command == "analyze" and row["policy_state"] == HISTORICAL_COMPLETE:
+                stops.append(
+                    {
+                        "experiment": item.experiment_id,
+                        "status": "REQUIRES_REVIEW",
+                        "reason": "historical evidence keeps its original analysis; "
+                        "re-analysis under a newer policy needs a reviewed protocol",
+                    }
+                )
                 break
             if row["status"] == "BLOCKED":
                 if row["intended_action"] == "WAIT_FOR_RESOURCES":
@@ -583,6 +643,11 @@ def execute(
                     if r["campaign"] == campaign.identifier
                 )
                 record("inspect_campaign", item=row)
+                if experiment is None and item_local_review(row):
+                    record(
+                        "skipped", campaign=campaign.identifier, reason=row["reason"]
+                    )
+                    continue
                 if row["status"] in {"FAILED", "REQUIRES_REVIEW"}:
                     (failures if row["status"] == "FAILED" else stops).append(row)
                     break
@@ -634,6 +699,13 @@ def execute(
             )
             if key == "campaign":
                 row["classification"] = stop["status"]
+            if stop["status"] == "FAILED":
+                # A failed verification voids any historical-evidence claim.
+                row.update(
+                    epoch_fields(
+                        UNVERIFIED, row["recorded_policy_revision"], final["source"]
+                    )
+                )
         selected = [
             r
             for r in final["items"] + final["campaigns"]

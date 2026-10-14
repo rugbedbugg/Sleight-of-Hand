@@ -16,7 +16,6 @@ from .campaign import (
     ROLES,
     SCREENING,
     Campaign,
-    ReviewRequired,
     common,
     fixed_horizon,
     in_domain,
@@ -121,15 +120,23 @@ def load(path, value) -> Campaign:
     ):
         raise ValueError("invalid screening budget")
     result = Campaign(canonical(value).decode("ascii"), template)
-    defaults = _canonical_defaults()
-    if {k: number(v) for k, v in result.initial.items()} != {
-        k: number(v) for k, v in defaults.items()
-    }:
-        raise ReviewRequired("screening centre differs from canonical PolicyParams")
+    # The centre is compared with the *current* runtime defaults only before
+    # execution (``centre_refusal``); loading must not depend on today's
+    # policy, so completed history stays readable after a policy change.
     for row in design(result):
         validate_vector(result, row["vector"])
     seed_blocks(result)  # reject collisions before any execution
     return result
+
+
+def centre_refusal(campaign):
+    """Why this screen may not execute against the current runtime defaults."""
+    defaults = _canonical_defaults()
+    if {k: number(v) for k, v in campaign.initial.items()} != {
+        k: number(v) for k, v in defaults.items()
+    }:
+        return "screening centre differs from canonical PolicyParams"
+    return None
 
 
 def _dependencies(deps):
