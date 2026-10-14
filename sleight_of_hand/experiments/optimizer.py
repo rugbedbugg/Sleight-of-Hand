@@ -2,7 +2,9 @@
 
 The canonical state is a chain of immutable decision events, not a cache.
 Each event is atomically published and fsynced before its dependent action.
-One invocation evaluates at most one batch (search or held-out confirmation).
+One invocation evaluates at most one batch (search/screening or held-out
+confirmation). Algorithms only choose vectors and read corrected verdicts;
+publication, replay, execution, evidence and analysis are shared.
 """
 
 from __future__ import annotations
@@ -13,17 +15,31 @@ from itertools import combinations
 from pathlib import Path
 
 from . import campaign as authority
-from . import journal, scheduler, supervisor
+from . import journal, scheduler, screening, supervisor
 from .campaign import ReviewRequired
 from .model import Redactor, assert_no_secrets, canonical, exact, sha256
 from .programme import Item, Programme
 from .spec import ExperimentSpec, dump
 
 VERSION = 1
+#: Start-event fields written by optimizer v1 before per-campaign authority.
+LEGACY_START = {
+    "optimizer_version",
+    "campaign_hash",
+    "programme_hash",
+    "source",
+    "policy_revision",
+    "campaign_seed",
+    "seed_blocks",
+}
 
 
 def directory(root, campaign):
     return Path(root) / "optimizer" / campaign.identifier
+
+
+def screening_campaign(campaign):
+    return campaign.kind == authority.SCREENING
 
 
 def initial(campaign):
@@ -31,8 +47,10 @@ def initial(campaign):
     return {
         "generation": 0,
         "used": 0,
-        "incumbent": c["initial"],
-        "steps": {p["parameter"]: p["initial_step"] for p in c["parameters"]},
+        "incumbent": campaign.initial,
+        "steps": None
+        if screening_campaign(campaign)
+        else {p["parameter"]: p["initial_step"] for p in c["parameters"]},
         "pending": None,
         "ready": False,
         "stop_reason": None,
@@ -43,6 +61,8 @@ def initial(campaign):
 
 
 def stop_reason(campaign, state):
+    if screening_campaign(campaign):
+        return screening.stop_reason(campaign, state)
     c = campaign.config
     if state["converged"]:
         return "minimum steps evaluated without improvement"
@@ -62,26 +82,36 @@ def batch(campaign, state):
     confirmation = state["stop_reason"] is not None
     if not confirmation and stop_reason(campaign, state):
         raise ValueError("search batch exceeds generation/vector budget or convergence")
-    phase = "confirmation" if confirmation else "search"
-    generation = 0 if confirmation else state["generation"]
-    vectors = (
-        [c["initial"], state["incumbent"]]
-        if confirmation
-        else [
-            state["incumbent"],
-            *authority.neighbors(campaign, state["incumbent"], state["steps"]),
+    if screening_campaign(campaign):
+        phase = "confirmation" if confirmation else "screening"
+        arms = screening.vectors(campaign, state)
+    else:
+        phase = "confirmation" if confirmation else "search"
+        vectors = (
+            [c["initial"], state["incumbent"]]
+            if confirmation
+            else [
+                state["incumbent"],
+                *authority.neighbors(campaign, state["incumbent"], state["steps"]),
+            ]
+        )
+        arms = [
+            (
+                "baseline"
+                if index == 0
+                else "candidate-" + sha256(canonical(vector))[:20],
+                vector,
+            )
+            for index, vector in enumerate(vectors)
         ]
-    )
-    if state["used"] + len(vectors) > c["max_generated_vectors"]:
+    generation = 0 if confirmation else state["generation"]
+    if state["used"] + len(arms) > c["max_generated_vectors"]:
         raise ValueError("candidate budget exceeded")
     identifier = f"{c['id']}.{phase}.{generation:02d}"
     seed = authority.seed_blocks(campaign)[f"{phase}-{generation}"]
     specs = []
-    for index, vector in enumerate(vectors):
+    for arm, vector in arms:
         authority.validate_vector(campaign, vector)
-        arm = (
-            "baseline" if index == 0 else "candidate-" + sha256(canonical(vector))[:20]
-        )
         value = campaign.template.to_dict()
         value.update(
             experiment_id=identifier,
@@ -91,7 +121,7 @@ def batch(campaign, state):
             policy_revision=c["policy_revision"],
             policy_config={**c["fixed_policy"], "params": vector},
             seed_policy={"base_seed": seed, "common_random_numbers": True},
-            stopping=c["confirmation_stopping" if confirmation else "search_stopping"],
+            stopping=authority.horizon(campaign, phase),
         )
         spec = ExperimentSpec.from_dict(value)
         specs.append(
@@ -125,10 +155,18 @@ def item_for(prepared):
     )
 
 
-def selection(campaign, state, report):
-    """Consume existing corrected verdicts; a larger raw mean never suffices."""
-    pending = state["pending"]
-    item = item_for(pending)
+def analysis_options(campaign, prepared):
+    """Predeclared analysis family; pattern search keeps all arm pairs."""
+    if not screening_campaign(campaign):
+        return {}
+    options = {"comparator": "baseline"}
+    if prepared["phase"] == "screening":
+        options["contrasts"] = screening.contrasts(campaign)
+    return options
+
+
+def _stratum(item, report):
+    """The single verified stratum holding complete evidence for every arm."""
     if report["experiment_id"] != item.experiment_id or len(report["strata"]) != 1:
         raise ValueError("unexpected optimizer analysis stratum")
     stratum = report["strata"][0]
@@ -149,6 +187,16 @@ def selection(campaign, state, report):
             or not arm["sufficient_sample"]
         ):
             raise ValueError("complete valid generation evidence required")
+    return stratum
+
+
+def selection(campaign, state, report):
+    """Consume existing corrected verdicts; a larger raw mean never suffices."""
+    pending = state["pending"]
+    item = item_for(pending)
+    stratum = _stratum(item, report)
+    if screening_campaign(campaign):
+        return screening.selection(campaign, state, stratum, item)
     expected_pairs = {tuple(sorted(p)) for p in combinations(stratum["arms"], 2)}
     comparisons = stratum["comparisons"]
     if (
@@ -305,6 +353,23 @@ def _completed_records(root, prepared):
     )
 
 
+def _authorized(campaign, programme, payload):
+    """Does the start event's authority still match the reviewed programme?
+
+    New start events bind a per-campaign authority (campaign hash plus the
+    identities of its dependencies), so unrelated reviewed programme additions
+    do not invalidate them. Legacy optimizer-v1 start events bound the whole
+    programme digest; they remain valid only while the programme's prefix up
+    to and including this campaign reproduces that digest byte-for-byte, i.e.
+    only later campaigns were appended. Anything else requires review.
+    """
+    if "authority" in payload:
+        return payload["authority"] == programme.authority(campaign.identifier)
+    return campaign.kind == authority.ALGORITHM["kind"] and payload[
+        "programme_hash"
+    ] == programme.prefix_digest(campaign.identifier)
+
+
 def reconstruct(campaign, programme, root, source, *, verify=False):
     """Read-only replay. Every transition is checked against its authority/evidence."""
     path = directory(root, campaign)
@@ -322,14 +387,15 @@ def reconstruct(campaign, programme, root, source, *, verify=False):
         if index == 0:
             if kind != "start":
                 raise ValueError("optimizer journal missing start")
+            exact(payload, LEGACY_START | ({"authority"} & set(payload)))
             if (
                 payload["campaign_hash"] != campaign.digest
-                or payload["programme_hash"] != programme.digest
+                or not _authorized(campaign, programme, payload)
                 or payload["policy_revision"] != c["policy_revision"]
                 or payload["optimizer_version"] != VERSION
             ):
                 raise ReviewRequired(
-                    "campaign/programme/version identity changed mid-run"
+                    "campaign/dependency authority or version changed mid-run"
                 )
             if (
                 payload["seed_blocks"] != authority.seed_blocks(campaign)
@@ -387,6 +453,8 @@ def reconstruct(campaign, programme, root, source, *, verify=False):
                     incumbent=decision["incumbent"],
                     steps=decision["steps"],
                 )
+            elif prepared["phase"] == "screening":
+                state.update(generation=1, incumbent=decision["incumbent"])
             else:
                 state["confirmation"] = decision["classification"]
             state.update(pending=None, ready=False)
@@ -403,7 +471,7 @@ def reconstruct(campaign, programme, root, source, *, verify=False):
         elif kind == "final":
             classification = (
                 "NO_IMPROVEMENT_DETECTED"
-                if state["incumbent"] == c["initial"]
+                if state["incumbent"] == campaign.initial
                 else state["confirmation"]
             )
             if (
@@ -453,9 +521,38 @@ def reconstruct(campaign, programme, root, source, *, verify=False):
     return state, events
 
 
+def dependency_states(campaign, preceding):
+    """Each reviewed condition against the already-inspected earlier rows."""
+    result = []
+    for condition in campaign.dependencies:
+        row = preceding.get(condition["id"], {})
+        actual = {
+            "status": row.get("status", "MISSING"),
+            "classification": row.get("classification"),
+        }
+        result.append(
+            {
+                **condition,
+                "actual": actual,
+                "met": actual["status"] == condition["status"]
+                and condition["classification"] in {None, actual["classification"]},
+            }
+        )
+    return result
+
+
+def _requirement(d):
+    if d["classification"] is None:
+        return d["status"]
+    return f"{d['status']} / {d['classification']}"
+
+
 def inspect(campaign, programme, root, source, fixed):
+    """Read-only campaign row; ``fixed`` maps earlier experiment/campaign IDs."""
     state = initial(campaign)
     status, reason, action = "PENDING", "approved local campaign", "GENERATE_AND_RUN"
+    dependencies = dependency_states(campaign, fixed)
+    unmet = [d for d in dependencies if not d["met"]]
     try:
         state, _ = reconstruct(campaign, programme, root, source)
         if campaign.identifier in supervisor._past_failures(
@@ -473,19 +570,22 @@ def inspect(campaign, programme, root, source, fixed):
                 else "COMPLETE"
             )
             reason, action = state["stop_reason"], "NONE"
-        elif any(
-            fixed[d]["status"] != "COMPLETE" for d in campaign.config["depends_on"]
-        ):
+        elif unmet:
             status, reason, action = (
                 "BLOCKED",
-                "campaign dependencies incomplete",
+                "campaign dependencies unmet: "
+                + "; ".join(
+                    f"{d['id']} requires {_requirement(d)}, found "
+                    + _requirement(d["actual"])
+                    for d in unmet
+                ),
                 "WAIT_FOR_DEPENDENCY",
             )
         else:
             status = (
                 "CONFIRMING"
                 if state["stop_reason"]
-                else "SEARCHING"
+                else ("SCREENING" if screening_campaign(campaign) else "SEARCHING")
                 if state["generation"] or state["pending"]
                 else "PENDING"
             )
@@ -503,8 +603,7 @@ def inspect(campaign, programme, root, source, fixed):
             elif state["stop_reason"]:
                 action = (
                     "FINALIZE"
-                    if state["confirmation"]
-                    or state["incumbent"] == campaign.config["initial"]
+                    if state["confirmation"] or state["incumbent"] == campaign.initial
                     else "CONFIRM"
                 )
             elif stop_reason(campaign, state):
@@ -513,7 +612,8 @@ def inspect(campaign, programme, root, source, fixed):
         status, reason, action = "REQUIRES_REVIEW", str(exc), "REVIEW"
     except (ValueError, OSError, RuntimeError, KeyError, TypeError) as exc:
         status, reason, action = "FAILED", str(exc), "INVESTIGATE"
-    return {
+    started = state["generation"] or state["pending"] or state["stop_reason"]
+    row = {
         "campaign": campaign.identifier,
         "campaign_hash": campaign.digest,
         "governance": campaign.config["governance"],
@@ -521,6 +621,7 @@ def inspect(campaign, programme, root, source, fixed):
         "status": status,
         "reason": reason,
         "intended_action": action,
+        "dependencies": dependencies,
         "incumbent": state["incumbent"],
         "generation": state["generation"],
         "steps": state["steps"],
@@ -528,13 +629,11 @@ def inspect(campaign, programme, root, source, fixed):
         "candidate_budget_max": campaign.config["max_generated_vectors"],
         "candidate_budget_remaining": campaign.config["max_generated_vectors"]
         - state["used"],
-        "search_state": state["stop_reason"] or "ACTIVE"
-        if state["generation"] or state["pending"] or state["stop_reason"]
-        else "PENDING",
+        "search_state": state["stop_reason"] or "ACTIVE" if started else "PENDING",
         "confirmation_state": state["confirmation"]
         or (
             "PENDING"
-            if state["stop_reason"] and state["incumbent"] != campaign.config["initial"]
+            if state["stop_reason"] and state["incumbent"] != campaign.initial
             else "NOT_STARTED"
         ),
         "classification": status
@@ -542,6 +641,31 @@ def inspect(campaign, programme, root, source, fixed):
         else state["classification"],
         "production": "LOCKED / untouched",
     }
+    if screening_campaign(campaign):
+        c = campaign.config
+        stopping = c["screening_stopping"]
+        row["screening"] = {
+            "arms": c["design"]["runs"] + 1,
+            "treatments": c["design"]["runs"],
+            "matches_per_arm": stopping["max_matches"],
+            "hands_per_arm": stopping["max_hands"],
+            "fraction": f"2^({len(c['factors'])}-{len(c['design']['generators'])})",
+            "defining_relation": "I=" + c["design"]["defining_relation"][0],
+            "resolution": c["design"]["resolution"],
+        }
+        row["candidate_family"] = {
+            "size": c["candidate_family"]["size"],
+            "comparisons": "canonical-vs-treatment",
+            "correction": "bonferroni",
+            "family_alpha": c["candidate_family"]["family_alpha"],
+        }
+        effects = c["diagnostic_family"]["effects"]
+        row["diagnostics"] = {
+            "main": sum(len(e) == 1 for e in effects),
+            "two_factor": sum(len(e) == 2 for e in effects),
+            "binding": False,
+        }
+    return row
 
 
 def advance(campaign, programme, root, source):
@@ -565,6 +689,7 @@ def advance(campaign, programme, root, source):
                 "optimizer_version": VERSION,
                 "campaign_hash": campaign.digest,
                 "programme_hash": programme.digest,
+                "authority": programme.authority(campaign.identifier),
                 "source": source,
                 "policy_revision": source["policy_revision"],
                 "campaign_seed": campaign.config["campaign_seed"],
@@ -582,7 +707,7 @@ def advance(campaign, programme, root, source):
         if state["stop_reason"] and not state["pending"]:
             classification = (
                 "NO_IMPROVEMENT_DETECTED"
-                if state["incumbent"] == campaign.config["initial"]
+                if state["incumbent"] == campaign.initial
                 else state["confirmation"]
             )
             if classification:
@@ -652,7 +777,9 @@ def advance(campaign, programme, root, source):
             raise ValueError("generation horizon incomplete or unauthorized")
         supervisor._verify_evidence(root, item)
         if row["analysis_status"] != "CURRENT":
-            supervisor._analyze(root, item, familywise=True)
+            supervisor._analyze(
+                root, item, familywise=True, **analysis_options(campaign, prepared)
+            )
             actions.append(
                 {"campaign": campaign.identifier, "action": "OPTIMIZER_ANALYZE"}
             )

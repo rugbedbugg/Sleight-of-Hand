@@ -32,6 +32,12 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
+def _condition(value: dict) -> str:
+    if value["classification"] is None:
+        return value["status"]
+    return f"{value['status']} / {value['classification']}"
+
+
 def render(result: dict) -> str:
     source = result["source"]
     lines = [
@@ -60,11 +66,33 @@ def render(result: dict) -> str:
             f"{item['campaign']}  {item['status']}  [{item['governance']}]",
             f"  campaign hash: {item['campaign_hash']}",
             f"  algorithm: {item['algorithm']['kind']} v{item['algorithm']['version']}",
-            "  incumbent: " + json.dumps(item["incumbent"], sort_keys=True),
-            f"  generation: {item['generation']}",
-            "  steps: " + json.dumps(item["steps"], sort_keys=True),
-            f"  candidate budget: {item['candidate_budget_used']} / {item['candidate_budget_max']} ({item['candidate_budget_remaining']} remaining)",
-            f"  search: {item['search_state']}; confirmation: {item['confirmation_state']}",
+        ]
+        for d in item.get("dependencies", []):
+            lines.append(
+                f"  dependency: {d['id']} requires {_condition(d)}; "
+                f"found {_condition(d['actual'])} ({'met' if d['met'] else 'unmet'})"
+            )
+        if "screening" in item:
+            s, family = item["screening"], item["candidate_family"]
+            diagnostics = item["diagnostics"]
+            lines += [
+                f"  design: {s['fraction']} fractional factorial, {s['defining_relation']}, resolution {s['resolution']}",
+                f"  screening: canonical + {s['treatments']} treatments; {s['matches_per_arm']} matches/arm, {s['hands_per_arm']:,} hands/arm; {item['search_state']}",
+                f"  candidate comparison family: {family['size']} {family['comparisons']} ({family['correction']}, alpha {family['family_alpha']})",
+                f"  factorial diagnostics: {diagnostics['main']} main + {diagnostics['two_factor']} two-factor contrasts (non-binding)",
+                "  incumbent: " + json.dumps(item["incumbent"], sort_keys=True),
+                f"  arm budget: {item['candidate_budget_used']} / {item['candidate_budget_max']}",
+                f"  confirmation: {item['confirmation_state']}",
+            ]
+        else:
+            lines += [
+                "  incumbent: " + json.dumps(item["incumbent"], sort_keys=True),
+                f"  generation: {item['generation']}",
+                "  steps: " + json.dumps(item["steps"], sort_keys=True),
+                f"  candidate budget: {item['candidate_budget_used']} / {item['candidate_budget_max']} ({item['candidate_budget_remaining']} remaining)",
+                f"  search: {item['search_state']}; confirmation: {item['confirmation_state']}",
+            ]
+        lines += [
             f"  classification: {item['classification'] or 'PENDING'}; next: {item['intended_action']}",
             f"  {item['reason']}",
             "  production: LOCKED / untouched",

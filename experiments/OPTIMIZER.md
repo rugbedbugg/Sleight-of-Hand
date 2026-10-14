@@ -19,7 +19,14 @@ uv run research status
 uv run research plan
 uv run research auto
 uv run research optimize O0001 --json
+uv run research optimize O0002 --json
 ```
+
+The campaign machinery supports two reviewed algorithms that share event
+publication, spec materialization, execution, evidence verification, analysis
+receipts, confirmation, replay and status: `bounded-pattern-search v1` (O0001,
+below) and `resolution-v-screening v1` ([O0002](SCREENING.md)). An algorithm
+only chooses a batch's full vectors and reads the corrected verdicts.
 
 `status` and `plan` inspect authority and replay campaign events without writing
 files, registering specs, recovering shards, or starting experiments. `auto`
@@ -60,7 +67,8 @@ uses that number as its zero-based generation ID.
 Programme schema 2 adds a required `campaigns` list of explicit
 `{path, campaign_hash}` references. Schema 1 remains supported for fixed-only
 programmes. Campaign IDs cannot duplicate experiment or campaign IDs. Campaign
-dependencies must name fixed experiments in the same programme. Paths remain
+dependencies name fixed experiments or earlier campaigns in the same programme
+(see [the programme contract](README.md#reviewed-programme)). Paths remain
 inside the programme/campaign directory. No directory discovery grants authority.
 
 Campaign schema 1 requires every field below and rejects unknown fields:
@@ -85,9 +93,47 @@ Campaign schema 1 requires every field below and rejects unknown fields:
 
 The campaign hash is `sha256:` plus SHA-256 of canonical, sorted, compact finite
 JSON. Any search-space or other authority change changes this hash. Updating
-the committed campaign and its programme pin requires review. A changed
-campaign/programme hash during a run requires review; existing history is
-never widened or silently repaired.
+the committed campaign and its programme pin requires review. Existing history
+is never widened or silently repaired.
+
+### Per-campaign authority
+
+A campaign's history is bound to its own **authority**, not to the digest of
+the entire programme:
+
+```text
+authority = "sha256:" + SHA-256(canonical({
+  authority_version: 1,
+  campaign_hash,
+  dependencies: [ {id, status, classification,
+                   campaign_authority          (campaign dependency, recursive)
+                 | experiment: {governance, sorted spec hashes,
+                                transitive depends_on identities}} ]
+}))
+```
+
+The campaign hash already covers governance, policy fingerprint, template pin,
+fixed policy, seeds, horizons and the campaign's own resource envelope; the
+programme loader rejects a campaign whose resources exceed the programme's.
+Start events record this authority (and, for information only, the programme
+digest). Replay requires the recorded authority to equal the one recomputed
+from the current reviewed programme. Appending unrelated reviewed work changes
+the programme digest but not this authority, so a completed campaign keeps
+replaying. Changing the campaign, a dependency's specs/governance/requirement,
+a dependent campaign's authority, or the policy fingerprint requires review.
+
+**Legacy rule (optimizer v1 start events).** O0001's start event predates
+per-campaign authority and recorded only the whole programme digest. Such an
+event (exactly the original seven start fields, `bounded-pattern-search` only)
+is accepted only if the current programme, truncated after that campaign's own
+`campaigns` entry, reproduces the recorded digest byte-for-byte. That holds
+exactly when campaigns were only appended after it; experiments, resources,
+the campaign itself and earlier campaigns are proven unchanged. Any other
+change, including adding a fixed experiment, requires review until a new
+reviewed migration exists. No history file is rewritten: the committed
+programme's prefix through O0001 still yields
+`sha256:f7a0f305665bc930092bc5ead8ddcce3a3f35b4713310133b770e1f885d1178e`,
+which `tests/test_experiment_screening.py` pins.
 
 ## O0001
 
@@ -221,7 +267,8 @@ directory is fsynced. A replaceable `.pending` scratch file is never canonical
 history. The supervisor's existing nonblocking per-root lock serializes writes.
 
 Events are start, batch, ready, result, stop, final, or halt. They record version,
-campaign/programme hashes, source HEAD/policy fingerprint, all seed blocks,
+campaign hash, per-campaign authority, programme digest (informational),
+source HEAD/policy fingerprint, all seed blocks,
 incumbent and steps, generated vectors/spec hashes/file hashes, budget consumed,
 experiment IDs, completed run IDs/raw hashes, analysis/report receipt hashes,
 all comparisons, selection/shrink reasons, stop reason and final classification.
@@ -233,7 +280,7 @@ state cache. Runtime execution also verifies raw and derived evidence through
 the existing supervisor. Unexpected specs in the generated directory or index,
 altered bytes/permissions, missing materialized specs, inconsistent budgets,
 changed reports, seed overlap, or an invalid journal fail closed. Governance,
-programme/campaign identity or policy fingerprint changes require review.
+campaign authority or policy fingerprint changes require review.
 
 The batch event reserves budget before files or work exist. Partial spec
 materialization resumes the same batch; a ready event makes missing specs an

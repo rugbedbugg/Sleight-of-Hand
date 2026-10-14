@@ -590,7 +590,7 @@ def test_integrity_fails_closed(tmp_path, defect):
     assert supervisor.execute(p, root)["actions"] == []
 
 
-@pytest.mark.parametrize("identity", ["campaign", "programme", "policy"])
+@pytest.mark.parametrize("identity", ["campaign", "policy"])
 def test_identity_change_requires_review(tmp_path, identity):
     c, p, _ = fixture(tmp_path / "authority")
     root = tmp_path / "runs"
@@ -600,12 +600,23 @@ def test_identity_change_requires_review(tmp_path, identity):
         value = c.config
         value["parameters"][0]["max"] = 11.0
         c = replace(c, config_json=canonical(value).decode())
-    elif identity == "programme":
-        p = replace(p, digest="changed")
     else:
         source["policy_revision"] = "sha256:" + "0" * 64
     with pytest.raises(optimizer.ReviewRequired):
         optimizer.reconstruct(c, p, root, source)
+
+
+def test_unrelated_programme_change_keeps_per_campaign_authority(tmp_path):
+    # Start events bind the campaign's own authority, not the whole programme.
+    c, p, _ = fixture(tmp_path / "authority")
+    root = tmp_path / "runs"
+    supervisor.execute(p, root)
+    start = optimizer._events(optimizer.directory(root, c))[0]["payload"]
+    assert start["authority"] == p.authority(c.identifier)
+    state, _ = optimizer.reconstruct(
+        c, replace(p, digest="changed"), root, runner.source_state()
+    )
+    assert state["generation"] == 1
 
 
 def test_journal_rejects_secrets(tmp_path):

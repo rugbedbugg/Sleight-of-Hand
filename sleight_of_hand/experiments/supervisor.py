@@ -276,10 +276,11 @@ def plan(programme: Programme, root: Path) -> dict:
         preceding[item.experiment_id] = row
     from . import optimizer
 
-    campaigns = [
-        optimizer.inspect(c, programme, root, source, preceding)
-        for c in programme.campaigns
-    ]
+    campaigns = []
+    for c in programme.campaigns:
+        # Later campaigns may depend on earlier fixed items or campaigns.
+        campaigns.append(optimizer.inspect(c, programme, root, source, preceding))
+        preceding[c.identifier] = campaigns[-1]
     return Redactor()(
         {
             "schema_version": VERSION,
@@ -295,11 +296,11 @@ def plan(programme: Programme, root: Path) -> dict:
     )
 
 
-def _analyze(root: Path, item: Item, *, familywise: bool = False) -> dict:
+def _analyze(root: Path, item: Item, *, familywise: bool = False, **options) -> dict:
     _verify_evidence(root, item)
     # Existing analysis checks raw checksums and recomputes all statistics.
     report = analysis.analyze(
-        root, item.experiment_id, check_raw=True, familywise=familywise
+        root, item.experiment_id, check_raw=True, familywise=familywise, **options
     )
     for stratum in report["strata"]:
         for arm in stratum["arms"].values():
@@ -376,6 +377,29 @@ def _verify_evidence(root: Path, item: Item) -> None:
                 raise RuntimeError(
                     "derived evidence checksum failed; rebuild requires review"
                 )
+
+
+#: Row states with no autonomous work left until something external changes.
+SETTLED = frozenset({"COMPLETE", "BLOCKED", "FAILED", "REQUIRES_REVIEW"})
+
+
+def disposition(failures: list, stops: list, selected: list) -> str:
+    """Overall cycle state; one blocked item never masks other eligible work.
+
+    A cycle-level stop (resources) blocks everything. Otherwise BLOCKED is
+    reported only when every unfinished selected row is itself blocked.
+    """
+    if failures or any(r["status"] == "FAILED" for r in selected):
+        return "FAILED"
+    if any(s["status"] == "REQUIRES_REVIEW" for s in stops + selected):
+        return "REQUIRES_REVIEW"
+    if stops:
+        return "BLOCKED"
+    if any(r["status"] not in SETTLED for r in selected):
+        return "PENDING"
+    if any(r["status"] == "BLOCKED" for r in selected):
+        return "BLOCKED"
+    return "COMPLETE"
 
 
 @contextmanager
@@ -616,19 +640,8 @@ def execute(
             if experiment is None
             or r.get("experiment", r.get("campaign")) == experiment
         ]
-        disposition = (
-            "FAILED"
-            if failures or any(r["status"] == "FAILED" for r in selected)
-            else "REQUIRES_REVIEW"
-            if any(s["status"] == "REQUIRES_REVIEW" for s in stops + selected)
-            else "BLOCKED"
-            if stops or any(r["status"] == "BLOCKED" for r in selected)
-            else "COMPLETE"
-            if all(r["status"] == "COMPLETE" for r in selected)
-            else "PENDING"
-        )
         final.update(
-            disposition=disposition,
+            disposition=disposition(failures, stops, selected),
             actions=actions,
             failures=failures,
             governance_stops=stops,

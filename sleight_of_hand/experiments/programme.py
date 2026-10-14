@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .campaign import Campaign, ReviewRequired
+from .campaign import Campaign, ReviewRequired, streams
 from .campaign import load as load_campaign
 from .model import Provenance, assert_no_secrets, canonical, exact, name, sha256
 from .spec import ExperimentSpec
@@ -22,6 +22,7 @@ LOCAL = frozenset(
 )
 ONLINE = frozenset({Provenance.LIVE_UNRATED, Provenance.SCRIPTED_PROBE})
 GOVERNANCE = frozenset({"LOCAL_APPROVED", "UNRATED_APPROVED", "REQUIRES_REVIEW"})
+AUTHORITY_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -40,12 +41,56 @@ class Programme:
     min_free_mib: float
     digest: str
     campaigns: tuple[Campaign, ...] = ()
+    #: (campaign ID, digest of the programme truncated after that campaign).
+    prefix_digests: tuple[tuple[str, str], ...] = ()
 
     def item(self, experiment_id: str) -> Item:
         for item in self.items:
             if item.experiment_id == experiment_id:
                 return item
         raise ValueError("experiment is not in the approved programme")
+
+    def campaign(self, identifier: str) -> Campaign:
+        for campaign in self.campaigns:
+            if campaign.identifier == identifier:
+                return campaign
+        raise ValueError("campaign is not in the approved programme")
+
+    def prefix_digest(self, identifier: str) -> str | None:
+        return dict(self.prefix_digests).get(identifier)
+
+    def authority(self, identifier: str) -> str:
+        """Per-campaign authority: its own hash plus its dependencies' identities.
+
+        Unrelated reviewed programme entries do not participate, so appending
+        reviewed work cannot invalidate an unchanged campaign's history.
+        """
+        campaign = self.campaign(identifier)
+        value = {
+            "authority_version": AUTHORITY_VERSION,
+            "campaign_hash": campaign.digest,
+            "dependencies": [self._identity(d) for d in campaign.dependencies],
+        }
+        return "sha256:" + sha256(canonical(value))
+
+    def _identity(self, condition: dict) -> dict:
+        identifier = condition["id"]
+        if any(c.identifier == identifier for c in self.campaigns):
+            return {**condition, "campaign_authority": self.authority(identifier)}
+        item = self.item(identifier)
+        return {
+            **condition,
+            "experiment": {
+                "governance": item.governance,
+                "specs": sorted(s.spec_hash for s in item.specs),
+                "depends_on": [
+                    self._identity(
+                        {"id": d, "status": "COMPLETE", "classification": None}
+                    )
+                    for d in item.depends_on
+                ],
+            },
+        }
 
 
 def _unique_fields(pairs):
@@ -142,11 +187,11 @@ def load(path: Path) -> Programme:
             )
         )
         seen.add(identifier)
-    campaigns = []
+    campaigns, prefixes = [], []
     if version == 2:
         if type(value["campaigns"]) is not list:
             raise ValueError("campaigns must be an explicit list")
-        for ref in value["campaigns"]:
+        for position, ref in enumerate(value["campaigns"]):
             exact(ref, {"path", "campaign_hash"})
             relative = Path(ref["path"])
             source = (path.parent / relative).resolve()
@@ -163,8 +208,6 @@ def load(path: Path) -> Programme:
             c = campaign.config
             if campaign.identifier in seen:
                 raise ValueError("duplicate campaign ID")
-            if not set(c["depends_on"]) <= {i.experiment_id for i in items}:
-                raise ValueError("campaign dependencies must be fixed experiments")
             if (
                 c["resources"]["workers"] > workers
                 or c["resources"]["min_free_mib"] < free
@@ -172,10 +215,62 @@ def load(path: Path) -> Programme:
                 raise ValueError("campaign resources exceed programme authority")
             seen.add(campaign.identifier)
             campaigns.append(campaign)
+            prefix = {**value, "campaigns": value["campaigns"][: position + 1]}
+            prefixes.append(
+                (campaign.identifier, "sha256:" + sha256(canonical(prefix)))
+            )
+        _check_dependencies(items, campaigns)
+        _check_streams(items, campaigns)
     return Programme(
         tuple(items),
         workers,
         float(free),
         "sha256:" + sha256(canonical(value)),
         tuple(campaigns),
+        tuple(prefixes),
     )
+
+
+def _check_dependencies(items, campaigns):
+    """Campaigns may depend on fixed experiments or strictly earlier campaigns.
+
+    Requiring earlier declaration makes cycles impossible; a forward reference
+    (including self-reference) is reported as a cycle risk, not reordered.
+    """
+    experiments = {i.experiment_id for i in items}
+    order = [c.identifier for c in campaigns]
+    for position, campaign in enumerate(campaigns):
+        for condition in campaign.dependencies:
+            identifier = condition["id"]
+            if identifier in order[position:]:
+                raise ValueError(
+                    "campaign dependency cycle or forward reference: "
+                    f"{campaign.identifier} -> {identifier}"
+                )
+            if identifier not in experiments and identifier not in order:
+                raise ValueError(f"unknown campaign dependency: {identifier}")
+            if identifier in experiments and condition["classification"] is not None:
+                raise ValueError(
+                    "impossible dependency requirement: fixed experiments have no "
+                    "campaign classification"
+                )
+
+
+def _check_streams(items, campaigns):
+    """Every campaign stream is fresh: disjoint from fixed and earlier campaigns."""
+    from .runner import match_seeds
+
+    claimed = {
+        seed
+        for item in items
+        for spec in item.specs
+        for match in range(spec.stopping.max_matches)
+        for seed in match_seeds(spec, match).values()
+    }
+    for campaign in campaigns:
+        declared = streams(campaign)
+        if declared & claimed:
+            raise ValueError(
+                f"{campaign.identifier} seed streams overlap reviewed evidence"
+            )
+        claimed |= declared

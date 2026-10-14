@@ -59,17 +59,18 @@ def load_arm(index: Index, spec, check_raw: bool = True) -> dict:
     }
 
 
+def per_match(arm: dict) -> dict:
+    """Per-match [sum of big blinds won, hands] for one arm."""
+    out = defaultdict(lambda: [0.0, 0])
+    for hand in arm["hands"]:
+        cell = out[hand["match"]]
+        cell[0] += hand["soh_net"] / (hand["big_blind"] or 1)
+        cell[1] += 1
+    return out
+
+
 def paired(a: dict, b: dict) -> dict:
     """Per-match differences (b - a) in big blinds per 100 hands."""
-
-    def per_match(arm):
-        out = defaultdict(lambda: [0.0, 0])
-        for hand in arm["hands"]:
-            cell = out[hand["match"]]
-            cell[0] += hand["soh_net"] / (hand["big_blind"] or 1)
-            cell[1] += 1
-        return out
-
     left, right = per_match(a), per_match(b)
     common = sorted(set(left) & set(right))
     diffs = [
@@ -121,9 +122,66 @@ def _comparable(a, b) -> bool:
     )
 
 
+def contrast(arms: dict, weights: dict, family_size: int) -> dict:
+    """A predeclared linear contrast of per-match bb/100 across CRN arms.
+
+    Each matched block (match index) contributes ``sum(w * bb/100)``; blocks
+    are aggregated with the same mean/SE normal interval as ``paired``. The
+    Bonferroni interval covers the declared contrast family. Diagnostic only.
+    """
+    if type(family_size) is not int or family_size < 1:
+        raise ValueError("contrast family must be positive")
+    if not weights or not set(weights) <= set(arms):
+        raise ValueError("contrast references unknown arms")
+    first = arms[min(weights)]
+    if not all(_comparable(first, arms[a]) for a in weights):
+        raise ValueError("contrast arms must share common random numbers")
+    cells = {a: per_match(arms[a]) for a in weights}
+    common = sorted(set.intersection(*(set(c) for c in cells.values())))
+    # Each arm's block response is its per-match bb/100, exactly as in ``paired``.
+    blocks = [
+        sum(
+            w * (100 * (cells[a][m][0] / cells[a][m][1]))
+            for a, w in sorted(weights.items())
+        )
+        for m in common
+        if all(cells[a][m][1] for a in weights)
+    ]
+    result = {"blocks": len(blocks), "mean": None, "se": None, "ci95": None}
+    if len(blocks) >= 2:
+        mean = sum(blocks) / len(blocks)
+        sd = math.sqrt(sum((d - mean) ** 2 for d in blocks) / (len(blocks) - 1))
+        se = sd / math.sqrt(len(blocks))
+        z = NormalDist().inv_cdf(1 - 0.05 / (2 * family_size))
+        result.update(
+            mean=mean,
+            se=se,
+            ci95=[mean - Z95 * se, mean + Z95 * se],
+        )
+        result["multiplicity"] = {
+            "method": "bonferroni",
+            "family_size": family_size,
+            "family_alpha": 0.05,
+            "interval": [mean - z * se, mean + z * se],
+        }
+    return result
+
+
 def analyze(
-    root: Path, experiment_id: str, check_raw: bool = True, *, familywise: bool = False
+    root: Path,
+    experiment_id: str,
+    check_raw: bool = True,
+    *,
+    familywise: bool = False,
+    comparator: str | None = None,
+    contrasts: list | None = None,
 ) -> dict:
+    """``comparator`` predeclares the family as every arm versus that arm.
+
+    ``contrasts`` adds named non-binding linear contrasts (``label``,
+    ``weights``, ``note``) corrected as one family. Both default to the
+    historical all-pairs report.
+    """
     index = Index(Path(root) / "index.sqlite")
     specs = index.specs(experiment_id)
     if not specs:
@@ -165,6 +223,12 @@ def analyze(
                 "metrics": measured,
             }
         pairs = list(combinations(sorted(arms, key=lambda x: x["spec"].arm), 2))
+        if comparator is not None:
+            if comparator not in stratum["arms"]:
+                raise ValueError("comparator arm is not in the stratum")
+            pairs = [
+                (a, b) for a, b in pairs if comparator in (a["spec"].arm, b["spec"].arm)
+            ]
         family_size = sum(_comparable(a, b) for a, b in pairs) if familywise else None
         for a, b in pairs:
             if not _comparable(a, b):
@@ -181,6 +245,18 @@ def analyze(
                 family_size=family_size,
             )
             stratum["comparisons"].append(comparison)
+        if contrasts is not None:
+            by_arm = {a["spec"].arm: a for a in arms}
+            stratum["contrasts"] = [
+                {
+                    "label": c["label"],
+                    "weights": c["weights"],
+                    "note": c["note"],
+                    **contrast(by_arm, c["weights"], len(contrasts)),
+                    "binding": False,
+                }
+                for c in contrasts
+            ]
         report["strata"].append(stratum)
     return report
 
@@ -249,5 +325,23 @@ def markdown(report: dict) -> str:
                 + f"; decisions identical {ident['identical']}/{ident['compared']}"
                 + f"; verdict {c['recommendation']['verdict']}",
             ]
+        if "contrasts" in stratum:
+            lines += [
+                "",
+                "Non-binding contrast diagnostics (bb/100):",
+                "",
+                "| contrast | mean | 95% CI | corrected interval | note |",
+                "|---|---|---|---|---|",
+            ]
+            for c in stratum["contrasts"]:
+                if c["mean"] is None:
+                    values = "n/a | n/a | n/a"
+                else:
+                    corrected = c["multiplicity"]["interval"]
+                    values = (
+                        f"{c['mean']:+.2f} | [{c['ci95'][0]:+.2f}, {c['ci95'][1]:+.2f}]"
+                        f" | [{corrected[0]:+.2f}, {corrected[1]:+.2f}]"
+                    )
+                lines.append(f"| {c['label']} | {values} | {c['note']} |")
         lines.append("")
     return "\n".join(lines)

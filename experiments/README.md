@@ -37,6 +37,7 @@ uv run research run E0003
 uv run research analyze E0003
 uv run research auto
 uv run research optimize O0001 --json
+uv run research optimize O0002 --json
 ```
 
 `auto` executes approved research inside a declared authority envelope. It is
@@ -68,7 +69,7 @@ Production is always shown as `LOCKED / untouched`.
 | `specs` | Explicit `{path, spec_hash}` references; relative paths stay inside the programme directory |
 | `governance` | `LOCAL_APPROVED`, `UNRATED_APPROVED`, or `REQUIRES_REVIEW` |
 | `depends_on` | Unique experiment IDs appearing earlier in the programme |
-| `campaigns` (v2) | Explicit `{path, campaign_hash}` references to reviewed local campaigns |
+| `campaigns` (v2) | Ordered explicit `{path, campaign_hash}` references to reviewed local campaigns |
 
 Unknown fields, duplicate IDs/paths/arms, mismatched hashes, mixed strata,
 cyclic/forward dependencies, unapproved platforms, and unsupported provenance
@@ -78,6 +79,17 @@ and still delegates availability and validation to its existing adapter.
 Changing this file changes authority and requires normal repository review.
 The [bounded optimizer](OPTIMIZER.md) generates candidates only inside a
 separately pinned campaign. It cannot expand its search space or budget.
+[O0002](SCREENING.md) is a fixed Resolution-V screening campaign run by the same
+campaign machinery.
+
+A campaign may depend on fixed experiments or on **earlier** campaigns, with
+an optional required classification (for example O0002 requires O0001
+`COMPLETE / NO_IMPROVEMENT_DETECTED`). Unknown IDs, forward references and
+cycles (including self-dependency), duplicate dependencies, and impossible
+requirements (a classification on a fixed experiment, a non-completion
+classification, or a status other than COMPLETE) are rejected at load. Every
+campaign's declared seed streams must be disjoint from every fixed experiment's
+streams and from earlier campaigns' streams.
 
 The initial programme explicitly lists E0001–E0005. E0004 depends on E0002 and
 requires the artifact hash already pinned by its immutable spec. The supervisor
@@ -88,7 +100,7 @@ prior-compilation interface; the resulting hash must match before E0004 runs.
 ### Finite execution and evidence
 
 An auto cycle makes one pass in dependency order, re-planning after each item,
-then advances at most one batch for each eligible reviewed optimizer campaign.
+then advances at most one batch for each eligible reviewed campaign, in order.
 It delegates unfinished shards to the existing spawned-process scheduler and
 uses the existing analysis implementation with raw verification enabled.
 Completed work is verified and skipped; analysis receipts bind reports to the
@@ -115,6 +127,11 @@ Independent legacy scheduler invocations should not target the same root while
 a supervisor cycle is active.
 
 The result distinguishes COMPLETE, PENDING, BLOCKED, FAILED and REQUIRES_REVIEW.
+FAILED and REQUIRES_REVIEW take precedence; a cycle-level resource stop is
+BLOCKED. Otherwise the cycle is PENDING while any selected item or campaign
+still has autonomous work, even if another independent item (such as E0001
+without credentials) is BLOCKED. BLOCKED ("no eligible work remains") is
+reported only when every unfinished selected row is itself blocked.
 FAILED returns exit code 1; completed, blocked and review-boundary cycles exit
 cleanly with their explicit disposition. Invalid commands/programmes fail.
 Conclusions are non-binding INCONCLUSIVE or REQUIRES_REVIEW summaries of the

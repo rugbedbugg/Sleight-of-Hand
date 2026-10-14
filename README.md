@@ -107,8 +107,11 @@ verifies evidence, and records non-binding conclusions. Missing Chipzen
 credentials block online work while eligible local work continues. Production
 is locked: no policy change, promotion, or deployment occurs. The reviewed
 [bounded optimizer](experiments/OPTIMIZER.md) may propose new immutable local
-trials inside O0001's approved search space and fixed budget. Each `auto` cycle
-advances at most one campaign generation or held-out confirmation batch.
+trials inside O0001's approved search space and fixed budget, and runs O0002's
+predeclared [Resolution-V interaction screen](experiments/SCREENING.md) of the
+same five parameters once O0001 is complete with no detected improvement.
+Each `auto` cycle advances at most one campaign batch (a search generation,
+the screening batch, or a held-out confirmation).
 Inspect `plan` before executing the programme. Use `research run E0003` or
 `research analyze E0003` for one approved experiment, and `--json` for structured
 output. All commands support `--programme` and `--root` after the subcommand.

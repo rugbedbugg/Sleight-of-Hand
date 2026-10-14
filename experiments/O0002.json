@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "id": "O0002",
+  "governance": "LOCAL_APPROVED",
+  "purpose": "Screen simultaneous changes of the five existing PolicyParams with a predeclared Resolution-V 2^(5-1) design after O0001 found no useful single-coordinate local move. Designed experiment over fixed parameters, not reinforcement learning. Non-binding research; no promotion.",
+  "campaign_seed": 202610080002,
+  "template": {
+    "path": "specs/E0003-canonical.json",
+    "spec_hash": "45d99c7cb7ad35bf1915be66ce767d56fe2ec18e5427907cbe41c60a4018bcc6"
+  },
+  "policy_revision": "sha256:8e51fc380811254489e995ebc6400c0aad1ee56d334003c390085806ebfa6f99",
+  "fixed_policy": {
+    "samples": 128,
+    "opponent_memory": true,
+    "historical_prior": null
+  },
+  "depends_on": [
+    {
+      "id": "O0001",
+      "status": "COMPLETE",
+      "classification": "NO_IMPROVEMENT_DETECTED"
+    }
+  ],
+  "algorithm": {
+    "kind": "resolution-v-screening",
+    "version": 1
+  },
+  "factors": [
+    {
+      "symbol": "A",
+      "parameter": "value_bet_threshold",
+      "low": 0.5,
+      "center": 0.55,
+      "high": 0.6
+    },
+    {
+      "symbol": "B",
+      "parameter": "call_threshold",
+      "low": 0.3,
+      "center": 0.35,
+      "high": 0.4
+    },
+    {
+      "symbol": "C",
+      "parameter": "bluff_freq",
+      "low": 0.1,
+      "center": 0.15,
+      "high": 0.2
+    },
+    {
+      "symbol": "D",
+      "parameter": "aggression",
+      "low": 0.75,
+      "center": 0.8,
+      "high": 0.85
+    },
+    {
+      "symbol": "E",
+      "parameter": "steepness",
+      "low": 6.0,
+      "center": 8.0,
+      "high": 10.0
+    }
+  ],
+  "design": {
+    "type": "regular-two-level-fractional-factorial",
+    "runs": 16,
+    "base_factors": ["A", "B", "C", "D"],
+    "generators": [
+      {
+        "factor": "E",
+        "product": ["A", "B", "C", "D"]
+      }
+    ],
+    "defining_relation": ["ABCDE"],
+    "resolution": 5,
+    "enumeration": "lexicographic-base-factors-low-first"
+  },
+  "screening_stopping": {
+    "min_matches": 30,
+    "max_matches": 30,
+    "min_hands": 3000,
+    "max_hands": 3000,
+    "hands_per_match": 100,
+    "matches_per_shard": 5,
+    "evaluation_interval_matches": 15,
+    "early_stopping": "none"
+  },
+  "confirmation_stopping": {
+    "min_matches": 60,
+    "max_matches": 60,
+    "min_hands": 6000,
+    "max_hands": 6000,
+    "hands_per_match": 100,
+    "matches_per_shard": 10,
+    "evaluation_interval_matches": 20,
+    "early_stopping": "none"
+  },
+  "candidate_family": {
+    "comparator": "baseline",
+    "comparisons": "each-treatment-vs-baseline",
+    "size": 16,
+    "correction": "bonferroni",
+    "family_alpha": 0.05,
+    "selection": "largest-positive-corrected-improvement-then-arm-name"
+  },
+  "diagnostic_family": {
+    "effects": ["A", "B", "C", "D", "E", "AB", "AC", "AD", "AE", "BC", "BD", "BE", "CD", "CE", "DE"],
+    "size": 15,
+    "estimator": "two-level-effect-2-over-runs-per-matched-block",
+    "correction": "bonferroni",
+    "family_alpha": 0.05,
+    "binding": false
+  },
+  "objective": "paired-bb-per-100-bonferroni-vs-canonical",
+  "max_generated_vectors": 19,
+  "resources": {
+    "workers": 2,
+    "min_free_mib": 1024
+  },
+  "created_at": "2026-10-14T00:00:00Z",
+  "seed_derivation": "sha256-campaign-phase-v1"
+}

@@ -100,6 +100,10 @@
     {
       "path": "O0001.json",
       "campaign_hash": "sha256:11cabc1fbe990217896ee4be436ccebb3142d8820018b265937e11e9a0f576ff"
+    },
+    {
+      "path": "O0002.json",
+      "campaign_hash": "sha256:6e14745c56975321d42ec59a896cfef0cebbd20707ee2d709a575e47ea4ac3c1"
     }
   ]
 }
