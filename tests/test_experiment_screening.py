@@ -35,7 +35,7 @@ from sleight_of_hand.experiments.storage import Index
 from sleight_of_hand.policy.heuristic import DEFAULT_PARAMS
 from tests.test_experiment_chipzen import ENV, chipzen_spec
 from tests.test_experiment_optimizer import fixture as pattern_fixture
-from tests.test_experiment_supervisor import small, write_programme
+from tests.test_experiment_supervisor import HISTORICAL_POLICY, small, write_programme
 
 CONFIG = runner.ROOT / "experiments/O0002.json"
 PROGRAMME = runner.ROOT / "experiments/programme.json"
@@ -91,8 +91,15 @@ def offline(monkeypatch):
 def screening_config(tmp_path, *, tiny=True, change=None, identifier="O9998"):
     tmp_path.mkdir(parents=True, exist_ok=True)
     config = json.loads(CONFIG.read_text())
+    # A copy of the real authority, rebound to the runtime under test: the
+    # real files stay pinned to the policy their history was produced under.
+    config["policy_revision"] = runner.policy_revision()
+    template = replace(
+        campaign.load(CONFIG).template, policy_revision=config["policy_revision"]
+    )
     if not (tmp_path / "template.json").exists():
-        (tmp_path / "template.json").write_bytes(dump(campaign.load(CONFIG).template))
+        (tmp_path / "template.json").write_bytes(dump(template))
+    config["template"]["spec_hash"] = template.spec_hash
     config.update(id=identifier, depends_on=[])
     config["template"]["path"] = "template.json"
     config["resources"]["min_free_mib"] = 0
@@ -260,7 +267,7 @@ def test_exact_canonical_o0002_authority():
         "spec_hash": "45d99c7cb7ad35bf1915be66ce767d56fe2ec18e5427907cbe41c60a4018bcc6",
     }
     assert c.template.spec_hash == v["template"]["spec_hash"]
-    assert v["policy_revision"] == runner.policy_revision()
+    assert v["policy_revision"] == HISTORICAL_POLICY
     assert v["fixed_policy"] == {
         "samples": 128,
         "opponent_memory": True,
@@ -1409,20 +1416,31 @@ def test_real_programme_plan_shows_o0002_pending_without_execution(
     preceding = {
         "O0001": {"status": "COMPLETE", "classification": "NO_IMPROVEMENT_DETECTED"}
     }
+    # Under the policy it is pinned to, the real authority plans as before.
+    historical = {**runner.source_state(), "policy_revision": HISTORICAL_POLICY}
     row = optimizer.inspect(
-        p.campaign("O0002"), p, tmp_path / "runs", runner.source_state(), preceding
+        p.campaign("O0002"), p, tmp_path / "runs", historical, preceding
     )
     assert row["status"] == "PENDING" and row["intended_action"] == "GENERATE_AND_RUN"
     assert row["screening"]["matches_per_arm"] == 30
     assert row["screening"]["hands_per_arm"] == 3000
     assert not (tmp_path / "runs").exists()
-    fresh = supervisor.plan(p, tmp_path / "runs")
+    with monkeypatch.context() as m:
+        m.setattr(supervisor, "source_state", lambda: historical)
+        fresh = supervisor.plan(p, tmp_path / "runs")
     rows = {r["campaign"]: r for r in fresh["campaigns"]}
     # Without evidence E0003 is incomplete, so both campaigns wait in order.
     assert rows["O0001"]["status"] == rows["O0002"]["status"] == "BLOCKED"
     assert (
         "O0001 requires COMPLETE / NO_IMPROVEMENT_DETECTED" in rows["O0002"]["reason"]
     )
+    # Under any other runtime policy, unevidenced old work only needs review.
+    assert runner.policy_revision() != HISTORICAL_POLICY
+    live = supervisor.plan(p, tmp_path / "runs")
+    assert {
+        (r["status"], r["policy_state"]) for r in live["campaigns"] + live["items"]
+    } == {("REQUIRES_REVIEW", "STALE_REQUIRES_REVIEW")}
+    assert not (tmp_path / "runs").exists()
 
 
 def test_production_and_policy_remain_locked(tmp_path, monkeypatch):

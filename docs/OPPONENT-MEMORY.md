@@ -2,7 +2,8 @@
 
 Sleight-of-Hand's Hold'em identity is **play sound poker when little is known;
 play the opponent increasingly as evidence accumulates**. This foundation
-implements evidence and memory, not the second step's strategy deviations.
+implements evidence and memory. Its one optional strategy consumer is
+[SafeExploitController v1](SAFE-EXPLOIT.md), which is off by default.
 It is not reinforcement learning, solver imitation, self-play or policy training.
 
 ## Implemented now
@@ -14,12 +15,30 @@ It is not reinforcement learning, solver imitation, self-play or policy training
 - Null, in-memory, explicit-directory file, and read-only bundled stores.
 - Bounded historical effective sample size (ESS).
 - Deterministic local normalized-data compiler.
-- Policy-inert runtime composition and lifecycle forwarding.
+- Runtime composition and lifecycle forwarding, policy-inert by default.
+- One opt-in policy consumer: SafeExploitController v1 (`safe_exploit=True`).
 - Explicit snapshot diagnostics; no automatic logging or environment switches.
 
-The existing `ShoveModel` is unchanged and remains strategically authoritative.
-The general memory does not supply range widths, actions, sizes or parameters.
-`decide`, preflop decisions, equity estimation and existing traces do not read it.
+The existing `ShoveModel` is unchanged and remains solely authoritative for shove
+decisions.
+
+**Before SafeExploit v1**, the general memory was policy-inert: no decision read it.
+**Now** it has exactly one optional consumer, used only when `safe_exploit=True` is
+passed explicitly:
+
+| Tendency | Consumer |
+| --- | --- |
+| `btn_open` | `Facing.OPEN` assumed range width |
+| `bb_iso` | `Facing.LIMP_RAISED` assumed range width |
+| `bb_3bet` | `Facing.THREE_BET` assumed range width |
+
+The adjustment is bounded to ±15 percentage points and gated by an evidence weight
+that is zero at ESS 8 or below and full at ESS 32. It changes only the call/fold
+interpretation, never raise regions, sizes, shove logic or postflop play. All
+other tendencies, including `open_shove/*` and `reshove/*`, have no consumer.
+With the default `safe_exploit=False`, `decide`, preflop decisions, equity
+estimation and existing traces do not read memory. See
+[SAFE-EXPLOIT.md](SAFE-EXPLOIT.md).
 
 ## Identity is not strategy
 
@@ -51,7 +70,8 @@ assertion. No such mapping or populated bundle ships in the Chipzen runtime.
 Two identities sharing a name never share profiles. Duplicate starts/reconnects
 with the same match and identity do not reload priors. Rename changes only
 in-memory metadata. A conflicting identity within the same match suspends memory
-and discards attribution-dependent evidence, without affecting policy. A missing
+and discards attribution-dependent evidence, without affecting default policy; with SafeExploit enabled, the emptied
+evidence returns canonical widths. A missing
 identity on reconnect does not erase a previously resolved identity.
 
 ## Data model and trust boundaries
@@ -156,6 +176,8 @@ work.
 under this Beta model, **not** an equal-tailed credible interval, frequentist
 coverage guarantee or exploitation confidence score. Sparse evidence often
 returns [0,1]. Do not feed this interval directly into strategy without validation.
+SafeExploit v1 deliberately does not use it; its gate is a separate, explicit
+engineering evidence weight.
 
 ## Stores and uploaded versus remote execution
 
@@ -257,8 +279,9 @@ the default `BeliefConfig` and the match-scoped default resolver. Consequences:
 
 - construction reads no files, environment, clock or network and consumes no
   RNG state;
-- policy output is unchanged: no decision path reads memory, and the canonical
-  oracle compares the default bot against `3f8291d` (which has no memory);
+- policy output is unchanged: with the default `safe_exploit=False` no decision
+  path reads memory, and the canonical oracles compare the default bot against
+  `3f8291d` (which has no memory) and against `1269a46` (before SafeExploit);
 - nothing is persisted: `NullProfileStore.save` is a no-op and memory never
   calls `save`;
 - a store lookup happens only when an identity resolves to persistent scope,
@@ -297,7 +320,7 @@ remain unchanged. Per-action work is unchanged: memory has no `decide` callback.
 Tests cover identity scope/rename/collisions, corruption/atomic writes, exact
 compiler output, synthetic limp/open/shove/tight/aggressive/switch patterns,
 posterior limits, constructor side effects, lifecycle ordering and failure
-isolation. The canonical 3f8291d oracle compares every full RNG state, SDK action
+isolation. The canonical oracles (against 3f8291d and 1269a46) compare every full RNG state, SDK action
 (type, amount, params), exception, stdout/stderr, seat, existing ShoveModel
 counters/config/pending ordering/dedup and accounting state. It includes all
 preflop classes/contexts, lifecycle edge cases, malformed states and all 28
@@ -313,17 +336,17 @@ Authoritative platform state/history → derived context
                                       → Decision
 ```
 
-The platform owns reality; SOH owns interpretation and memory. A future safe
-exploit controller may consume validated behavioral uncertainty, never literal
-player names or ID-specific strategy branches. Its design and controlled,
-ablated policy integration is the next strategic milestone, after this substrate
-is validated. All baseline/match-local/history variants currently choose the
-same actions; only their separately inspected model state differs.
+The platform owns reality; SOH owns interpretation and memory. SafeExploitController
+v1 is the first, deliberately narrow step. It consumes validated behavioral
+evidence, never literal player names or ID-specific strategy branches. With it
+disabled (the default), all baseline/match-local/history variants choose the same
+actions, and only their separately inspected model state differs. Enabled, only the
+three preflop range widths above can move.
 
 ## Deferred
 
 Persistent hosted bot-ID mapping; public-history collector; populated bundles;
 postflop context metrics; age-based decay; change-point probabilities; archetype
-posteriors; inferred hand ranges; SafeExploitController; policy deviations;
-pricing repair; any deployment. Existing Leduc research and older roadmap text
+posteriors; inferred hand ranges beyond SafeExploit v1's bounded width proxy;
+broader policy deviations; pricing repair; any deployment. Existing Leduc research and older roadmap text
 are not claims that those techniques are used by this Hold'em memory component.

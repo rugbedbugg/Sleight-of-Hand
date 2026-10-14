@@ -26,7 +26,9 @@ from .model import (
 SCHEMA_VERSION = 1
 GAME_VARIANTS = frozenset({"nlhe_hu"})
 METRIC_GROUPS = frozenset({"outcome", "behavior", "model", "accounting"})
-POLICY_KEYS = frozenset({"opponent_memory", "params", "samples", "historical_prior"})
+POLICY_KEYS = frozenset(
+    {"opponent_memory", "params", "samples", "historical_prior", "safe_exploit"}
+)
 PARAM_NAMES = frozenset(
     {"value_bet_threshold", "call_threshold", "bluff_freq", "aggression", "steepness"}
 )
@@ -108,6 +110,9 @@ def _policy(config: dict) -> dict:
         raise ValueError("unknown policy configuration keys")
     if type(config.get("opponent_memory", True)) is not bool:
         raise ValueError("invalid opponent_memory")
+    # Absent means false: specs written before the key existed are unchanged.
+    if type(config.get("safe_exploit", False)) is not bool:
+        raise ValueError("invalid safe_exploit")
     params = config.get("params", {})
     if type(params) is not dict or not set(params) <= PARAM_NAMES:
         raise ValueError("unknown policy parameters")

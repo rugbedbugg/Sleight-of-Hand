@@ -374,6 +374,12 @@ def assumed_villain_width(ctx: PreflopContext, config: PreflopConfig) -> float:
     }[ctx.facing]
 
 
+#: Contexts whose assumed villain width a caller may replace.
+WIDTH_OVERRIDABLE = frozenset(
+    {Facing.SHOVE, Facing.OPEN, Facing.LIMP_RAISED, Facing.THREE_BET}
+)
+
+
 def action_distribution(
     ctx: PreflopContext,
     label: str,
@@ -385,9 +391,12 @@ def action_distribution(
     Raise regions are combo-weighted tops of the strength order. Calls
     compare equity against the assumed villain range, discounted for
     realization unless all-in, with the exact price of this decision.
-    ``villain_width`` replaces the assumed shove range width (from
-    :mod:`.opponent`); it is ignored outside shove decisions, and ``None``
-    keeps the static version 3 assumption.
+    ``villain_width`` replaces the assumed width of the villain's range in
+    :data:`WIDTH_OVERRIDABLE` contexts: shoves (from :mod:`.opponent`) and
+    an open, limp-raise or three-bet (from :mod:`.exploit`). It changes only
+    the equity a call is judged by, never raise regions, sizes or prices;
+    it is ignored elsewhere, and ``None`` keeps the static version 3
+    assumption.
     """
     if ctx.facing is Facing.FIRST_IN:
         raise_p = share_in_top(label, config.btn_raise_top)
@@ -398,7 +407,7 @@ def action_distribution(
         return {RAISE: raise_p, CALL: 1.0 - raise_p, FOLD: 0.0}
 
     width = assumed_villain_width(ctx, config)
-    if villain_width is not None and ctx.facing is Facing.SHOVE:
+    if villain_width is not None and ctx.facing in WIDTH_OVERRIDABLE:
         width = villain_width
     equity = equity_vs_top(label, width)
     if ctx.facing is Facing.SHOVE:

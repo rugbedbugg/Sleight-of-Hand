@@ -43,9 +43,15 @@ def offline(monkeypatch):
 def fixture(tmp_path, *, tiny=True, change=None, chipzen=False):
     tmp_path.mkdir(parents=True, exist_ok=True)
     config = json.loads(CONFIG.read_text())
-    template = campaign.load(CONFIG).template
+    # A copy of the real authority, rebound to the runtime under test: the
+    # real files stay pinned to the policy their history was produced under.
+    config["policy_revision"] = runner.policy_revision()
+    template = replace(
+        campaign.load(CONFIG).template, policy_revision=config["policy_revision"]
+    )
     (tmp_path / "template.json").write_bytes(dump(template))
     config["template"]["path"] = "template.json"
+    config["template"]["spec_hash"] = template.spec_hash
     config["id"] = "O9999"
     config["depends_on"] = []
     config["resources"]["min_free_mib"] = 0

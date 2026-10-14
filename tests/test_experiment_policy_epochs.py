@@ -41,7 +41,7 @@ from tests.test_experiment_screening import (
     tree,
 )
 from tests.test_experiment_screening import fixture as screening_fixture
-from tests.test_experiment_supervisor import small, write_programme
+from tests.test_experiment_supervisor import HISTORICAL_POLICY, small, write_programme
 
 OLD = runner.policy_revision()
 NEW = "sha256:" + "1" * 64
@@ -790,17 +790,25 @@ def test_disposition_truth_table(rows, stops, expected):
 # --- current behaviour and read-only planning --------------------------------
 
 
-def test_real_programme_is_current_under_unchanged_fingerprint(tmp_path):
+def test_real_programme_is_current_only_under_its_pinned_fingerprint(
+    tmp_path, monkeypatch
+):
     p = programme.load(runner.ROOT / "experiments/programme.json")
-    result = supervisor.plan(p, tmp_path / "runs")
-    assert {r["policy_state"] for r in result["items"] + result["campaigns"]} == {
-        "CURRENT"
-    }
-    assert all(
-        r["recorded_policy_revision"] == OLD
-        for r in result["items"] + result["campaigns"]
-    )
+    historical = {**runner.source_state(), "policy_revision": HISTORICAL_POLICY}
+    with monkeypatch.context() as m:
+        m.setattr(supervisor, "source_state", lambda: historical)
+        result = supervisor.plan(p, tmp_path / "runs")
+    rows = result["items"] + result["campaigns"]
+    assert {r["policy_state"] for r in rows} == {"CURRENT"}
+    assert all(r["recorded_policy_revision"] == HISTORICAL_POLICY for r in rows)
     assert "policy:" not in cli.render(result)
+    # The live runtime differs (SafeExploit v1); unevidenced rows need review.
+    assert runner.policy_revision() != HISTORICAL_POLICY
+    live = supervisor.plan(p, tmp_path / "runs")
+    rows = live["items"] + live["campaigns"]
+    assert {r["policy_state"] for r in rows} == {"STALE_REQUIRES_REVIEW"}
+    assert all(r["recorded_policy_revision"] == HISTORICAL_POLICY for r in rows)
+    assert all(r["current_policy_revision"] == OLD for r in rows)
     assert not (tmp_path / "runs").exists()
 
 

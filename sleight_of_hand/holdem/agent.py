@@ -11,6 +11,7 @@ from sleight_of_hand.engine.actions import ActionType
 from sleight_of_hand.holdem import preflop
 from sleight_of_hand.holdem.decision import Decision, DecisionState
 from sleight_of_hand.holdem.equity import estimate_equity
+from sleight_of_hand.holdem.exploit import ExploitAdjustment, SafeExploitController
 from sleight_of_hand.holdem.hands import hand_class
 from sleight_of_hand.holdem.memory import OpponentMemory
 from sleight_of_hand.holdem.opponent import OPEN, RESHOVE, ShoveModel
@@ -82,6 +83,8 @@ class HoldemAgent:
     State is read directly, without normalizing cards, history mappings or
     seats. Lifecycle callers use ``shove_model.record_start`` and
     ``shove_model.observe_result`` with an explicit round key and hero seat.
+    ``safe_exploit`` (default off) lets :mod:`.exploit` reinterpret three
+    preflop raise widths from opponent memory; off, memory is never read.
     """
 
     def __init__(
@@ -92,9 +95,12 @@ class HoldemAgent:
         preflop_config: preflop.PreflopConfig = preflop.DEFAULT_PREFLOP,
         trace_preflop: bool = False,
         opponent_memory: OpponentMemory | None = None,
+        safe_exploit: bool = False,
     ) -> None:
         if not 1 <= samples <= 512:
             raise ValueError("samples must be between 1 and 512")
+        if type(safe_exploit) is not bool:
+            raise ValueError("safe_exploit must be a bool")
         self.params = params.clipped()
         self.rng = rng
         self.samples = samples
@@ -105,6 +111,8 @@ class HoldemAgent:
         self.opponent_memory = (
             opponent_memory if opponent_memory is not None else OpponentMemory()
         )
+        self.safe_exploit = safe_exploit
+        self.exploit_controller = SafeExploitController(preflop_config)
 
     def shove_estimate(self, context: preflop.PreflopContext) -> dict | None:
         """Adaptive shove-range estimate for a shove decision, else None."""
@@ -114,6 +122,14 @@ class HoldemAgent:
         return self.shove_model.estimate(
             kind, preflop.stack_bucket(context.effective_stack_bb)
         )
+
+    def exploit_adjustment(
+        self, context: preflop.PreflopContext
+    ) -> ExploitAdjustment | None:
+        """SafeExploit attribution when enabled, else None (memory unread)."""
+        if not self.safe_exploit:
+            return None
+        return self.exploit_controller.adjust(context, self.opponent_memory)
 
     def preflop_decision(self, state: DecisionState) -> Decision | None:
         """Decide a heads-up preflop state, or ``None`` to use Season 6.
@@ -141,12 +157,16 @@ class HoldemAgent:
             self._trace(state, context, "unreadable_hole_cards")
             return None
         shove = self.shove_estimate(context)
-        probs = preflop.action_distribution(
-            context,
-            label,
-            self.preflop_config,
-            shove["adaptive_width"] if shove else None,
+        exploit = self.exploit_adjustment(context)
+        # ShoveModel alone owns shove widths; SafeExploit never adjusts them.
+        width = (
+            shove["adaptive_width"]
+            if shove
+            else exploit.villain_width
+            if exploit
+            else None
         )
+        probs = preflop.action_distribution(context, label, self.preflop_config, width)
         choices = [a for a, p in probs.items() if p > 0]
         choice = self.rng.choices(choices, weights=[probs[a] for a in choices])[0]
         action = self.legal_preflop_decision(state, context, choice)
@@ -158,6 +178,7 @@ class HoldemAgent:
             probs,
             action,
             shove,
+            exploit,
         )
         return action
 
@@ -192,11 +213,13 @@ class HoldemAgent:
         probs: dict[str, float] | None = None,
         action: Decision | None = None,
         shove: dict | None = None,
+        exploit: ExploitAdjustment | None = None,
     ) -> None:
         """One JSON line per preflop decision when tracing is enabled.
 
         Only public state and our own hand class; no hole cards, credentials
         or connection details. Tracing never touches the RNG or the choice.
+        The ``safe_exploit`` object appears only when SafeExploit is enabled.
         """
         if not self.trace_preflop:
             return
@@ -237,6 +260,8 @@ class HoldemAgent:
             record["shove_model"] = {
                 k: round(v, 4) if isinstance(v, float) else v for k, v in shove.items()
             }
+        if exploit is not None:
+            record["safe_exploit"] = exploit.to_dict()
         if label is not None:
             record["hand_class"] = label
         if probs is not None:

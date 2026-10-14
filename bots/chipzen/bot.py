@@ -55,7 +55,9 @@ def _decision(action: Action | None) -> Decision | None:
 class SleightOfHandBot(HoldemAgent, Bot):
     """Heads-up preflop policy first; otherwise the Season 6 equity policy.
 
-    No exhaustive search, opponent ranges or learned Hold'em strategy.
+    No exhaustive search or learned Hold'em strategy. Opponent memory shapes
+    preflop range widths only with an explicit ``safe_exploit=True``; the
+    uploaded runtime's ``main()`` never enables it.
     """
 
     def __init__(
@@ -66,6 +68,7 @@ class SleightOfHandBot(HoldemAgent, Bot):
         preflop_config: preflop.PreflopConfig = preflop.DEFAULT_PREFLOP,
         trace_preflop: bool = False,
         opponent_memory: OpponentMemory | None = None,
+        safe_exploit: bool = False,
     ) -> None:
         if not 1 <= samples <= 512:
             raise ValueError("samples must be between 1 and 512")
@@ -78,6 +81,7 @@ class SleightOfHandBot(HoldemAgent, Bot):
             preflop_config=preflop_config,
             trace_preflop=trace_preflop,
             opponent_memory=opponent_memory,
+            safe_exploit=safe_exploit,
         )
         self._seat: int | None = None
         self._accounting_observer = accounting_observer.from_environment()
@@ -179,8 +183,9 @@ class SleightOfHandBot(HoldemAgent, Bot):
         probs: dict[str, float] | None = None,
         action: Action | None = None,
         shove: dict | None = None,
+        exploit=None,
     ) -> None:
-        super()._trace(state, context, reason, label, probs, action, shove)
+        super()._trace(state, context, reason, label, probs, action, shove, exploit)
 
     def decide(self, state: GameState) -> Action:
         # Resolve the estimator here to retain the adapter's patchable hook.

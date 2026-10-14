@@ -374,6 +374,93 @@ class TightAggressive(ScriptedSeat):
         return Action.fold()
 
 
+class PreflopArchetype(ScriptedSeat):
+    """A fixed preflop type from public state and its own hand strength.
+
+    Percent thresholds are combo-weighted strength percentiles (0 = best):
+    as button, raise the strongest ``open_top`` and fold the rest; as big
+    blind facing an open, re-raise the strongest ``three_bet_top``, call to
+    ``defend_top``, fold the rest; check behind a limp. Facing a further
+    raise or an all-in it continues with the strongest ``continue_top``.
+    Postflop it plays fit-or-fold: pair or better calls, otherwise check or
+    fold. No randomness and no knowledge of the other seat's cards. These
+    are research fixtures that produce measurable tendencies (``btn_open``,
+    ``bb_3bet``), not models of real players.
+    """
+
+    open_top = 70.0
+    three_bet_top = 5.0
+    defend_top = 60.0
+    continue_top = 10.0
+    open_bb = 2.5
+    three_bet_mult = 3.0
+
+    def _raise(self, state, target: float):
+        if "raise" not in state.valid_actions or state.max_raise <= 0:
+            return None
+        target = max(state.min_raise, min(state.max_raise, round(target)))
+        return Action.raise_to(target)
+
+    @staticmethod
+    def _big_blind(state) -> int:
+        posts = [
+            h["amount"] for h in state.action_history if h["action"] == "post_big_blind"
+        ]
+        return posts[0] if posts else 0
+
+    def decide(self, state):
+        valid = state.valid_actions
+        hole = [str(c) for c in state.hole_cards]
+        if state.phase != "preflop":
+            made = rank_hand([encode(c) for c in hole + [str(c) for c in state.board]])
+            if "check" in valid:
+                return Action.check()
+            return Action.call() if made[0] >= 1 else Action.fold()
+        top = strength_percentile(hole)
+        voluntary = [
+            h for h in state.action_history if not h["action"].startswith("post_")
+        ]
+        raises = sum(h["action"] in ("raise", "all_in") for h in voluntary)
+        if not voluntary:  # button, first in
+            if top < self.open_top:
+                action = self._raise(
+                    state, round(self.open_bb * self._big_blind(state))
+                )
+                if action:
+                    return action
+            return Action.fold()
+        if "check" in valid:  # behind a limp, or a free option
+            return Action.check()
+        if raises == 1 and len(voluntary) == 1:  # big blind facing an open
+            if top < self.three_bet_top:
+                action = self._raise(
+                    state, self.three_bet_mult * voluntary[0]["amount"]
+                )
+                if action:
+                    return action
+            return Action.call() if top < self.defend_top else Action.fold()
+        return Action.call() if top < self.continue_top else Action.fold()
+
+
+class WideOpener(PreflopArchetype):
+    """Opens almost every button hand; otherwise the shared simple defaults."""
+
+    open_top = 95.0
+
+
+class TightOpener(PreflopArchetype):
+    """Opens only the strongest quarter of button hands."""
+
+    open_top = 25.0
+
+
+class ThreeBetHeavy(PreflopArchetype):
+    """Re-raises a wide share of big-blind hands against a button open."""
+
+    three_bet_top = 45.0
+    defend_top = 75.0
+
+
 def street_commit(state: GameState, seat: int) -> int:
     """Chips ``seat`` has put in on the current street, from public history."""
     total = 0
@@ -502,6 +589,7 @@ def build_soh(policy_config: dict, seed: int, observer: bool = False):
             seed=seed,
             samples=policy_config.get("samples", 128),
             opponent_memory=memory_for(policy_config),
+            safe_exploit=policy_config.get("safe_exploit", False),
         )
     if not policy_config.get("opponent_memory", True):
         bot.opponent_memory = None  # the adapter's supported "no memory" state
@@ -512,6 +600,10 @@ SCRIPTED = {
     "calling_station": CallingStation,
     "random_legal": RandomLegal,
     "tag_simple": TightAggressive,
+    # Exploit-sensitive preflop types; local fixtures, in no programme yet.
+    "wide-opener": WideOpener,
+    "tight-opener": TightOpener,
+    "threebet-heavy": ThreeBetHeavy,
 }
 
 

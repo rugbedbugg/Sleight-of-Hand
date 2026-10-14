@@ -4,7 +4,8 @@ A local scripted opponent is the same program every match, so its identity
 is persistent *by construction*; the evidence string says exactly that. The
 identity lives in the ``local`` provider namespace and can never collide
 with, or be linked to, a Chipzen (or any other platform) identity. Priors
-only reach the policy-inert memory; no policy code reads them.
+only reach OpponentMemory; no policy code reads them unless a spec also sets
+``safe_exploit``, where they count at most the capped historical ESS.
 """
 
 from __future__ import annotations

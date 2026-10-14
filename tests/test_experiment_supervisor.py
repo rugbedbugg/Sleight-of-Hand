@@ -27,6 +27,11 @@ from sleight_of_hand.experiments.storage import Index
 from tests.test_experiment_chipzen import ENV, chipzen_spec
 from tests.test_experiment_scheduler import tiny
 
+#: Runtime policy every real programme spec and campaign is pinned to.
+HISTORICAL_POLICY = (
+    "sha256:8e51fc380811254489e995ebc6400c0aad1ee56d334003c390085806ebfa6f99"
+)
+
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
@@ -93,8 +98,9 @@ def test_programme_roundtrip_pins_and_historical_fingerprint(tmp_path):
     assert approved.item("E9999").specs == (small(),)
     assert programme.load(path).digest == approved.digest
     historical = programme.load(runner.ROOT / "experiments/programme.json")
+    # Real authority stays pinned to the policy its history was produced under.
     assert {s.policy_revision for i in historical.items for s in i.specs} == {
-        runner.policy_revision()
+        HISTORICAL_POLICY
     }
     assert all(
         s.source_sha != runner.source_state()["git_head"]

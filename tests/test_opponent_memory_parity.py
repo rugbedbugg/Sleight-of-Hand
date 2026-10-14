@@ -1,4 +1,8 @@
-"""Canonical 3f8291d oracle: never normalize away a policy/lifecycle mismatch."""
+"""Canonical oracles: never normalize away a policy/lifecycle mismatch.
+
+The default bot is compared against 3f8291d (before opponent memory) and
+against 1269a46 (main before SafeExploit v1, which is off by default).
+"""
 
 import ast
 import copy
@@ -15,7 +19,13 @@ from itertools import zip_longest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 BASE = "3f8291d9b1ba7c6ac7b9cde99f046d0478fb54fe"
+PRE_SAFE_EXPLOIT = "1269a4646a2e7c1f250ce3ea3a5f1f331ade41d7"
+#: The only agent methods allowed to differ from BASE: SafeExploit v1, whose
+#: default-off path both oracles prove decision-for-decision unchanged.
+SAFE_EXPLOIT_METHODS = frozenset({"preflop_decision", "_trace", "exploit_adjustment"})
 
 
 def canonical_records(stream):
@@ -196,13 +206,14 @@ def canonical_records(stream):
     stream.write(json.dumps({"memory_hands": memory_hands}) + "\n")
 
 
-def test_canonical_full_state_oracle(tmp_path):
+@pytest.mark.parametrize("base", [BASE, PRE_SAFE_EXPLOIT])
+def test_canonical_full_state_oracle(tmp_path, base):
     root = Path(__file__).resolve().parents[1]
     archive = tmp_path / "main.tar"
     source = tmp_path / "main"
     source.mkdir()
     with archive.open("wb") as stream:
-        subprocess.run(["git", "archive", BASE], stdout=stream, check=True, cwd=root)
+        subprocess.run(["git", "archive", base], stdout=stream, check=True, cwd=root)
     with tarfile.open(archive) as stream:
         stream.extractall(source, filter="data")
     driver = "import sys,runpy,gzip; sys.path.insert(0,sys.argv[1]); n=runpy.run_path(sys.argv[2]); stream=gzip.open(sys.argv[3],'wt'); n['canonical_records'](stream); stream.close()"
@@ -238,14 +249,17 @@ def test_canonical_full_state_oracle(tmp_path):
             if "canonical" in old:
                 assert old == new, f"Canonical observable mismatch at step {index}"
                 count += 1
-            else:
+            elif base == BASE:
                 assert old["memory_hands"] == 0 and new["memory_hands"] > 0
+            else:  # memory existed already; it must learn identically
+                assert old["memory_hands"] == new["memory_hands"] > 0
+    assert count > 0
     (tmp_path / "oracle-summary.json").write_text(
-        json.dumps({"steps": count, "result": "PASS"})
+        json.dumps({"base": base, "steps": count, "result": "PASS"})
     )
 
 
-def test_agent_diff_is_composition_only():
+def test_agent_diff_is_composition_or_safe_exploit_only():
     root = Path(__file__).resolve().parents[1]
     old = ast.parse(
         subprocess.check_output(
@@ -262,6 +276,7 @@ def test_agent_diff_is_composition_only():
             if (
                 isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and node.name != "__init__"
+                and node.name not in SAFE_EXPLOIT_METHODS
             ):
                 nodes.append(ast.dump(node))
         return nodes
