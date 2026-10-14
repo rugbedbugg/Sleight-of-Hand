@@ -6,6 +6,7 @@ while every replay, planning and execution path runs unmodified. Spawned
 workers still compute the real fingerprint, so the worker firewall is real.
 """
 
+import gc
 import json
 import socket
 from dataclasses import replace
@@ -18,6 +19,7 @@ from sleight_of_hand.experiments import (
     analysis,
     campaign,
     cli,
+    journal,
     optimizer,
     programme,
     runner,
@@ -44,6 +46,7 @@ from tests.test_experiment_supervisor import small, write_programme
 OLD = runner.policy_revision()
 NEW = "sha256:" + "1" * 64
 STALE = "sha256:" + "0" * 64  # a revision the real runtime never had
+RAW_DEFECTS = ("raw_flipped", "raw_truncated")
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +65,26 @@ def offline(monkeypatch):
 
     monkeypatch.setattr(socket, "create_connection", no_network)
     monkeypatch.setattr(socket.socket, "connect", no_network)
+
+
+def durable(root):
+    """Every durable file; SQLite's reader coordination files are excluded.
+
+    A read-only WAL reader may create an empty ``-wal`` and a ``-shm`` index;
+    they never hold index data, so the ``-wal`` must stay empty.
+    """
+    files = tree(root)
+    for name in [n for n in files if n.endswith(("-wal", "-shm"))]:
+        content, _ = files.pop(name)
+        assert not name.endswith("-wal") or content == b""
+    return files
+
+
+def index_rows(root):
+    index = Index(root / "index.sqlite")
+    rows = (index.runs(), [s.spec_hash for s in index.specs()])
+    gc.collect()
+    return rows
 
 
 def under_new_policy(monkeypatch):
@@ -159,30 +182,67 @@ def test_old_fixed_experiment_with_pending_shards_requires_review(
     assert len(Index(root / "index.sqlite").runs()) == 1
 
 
-@pytest.mark.parametrize("defect", ["missing", "stale_receipt"])
-def test_old_complete_evidence_without_verified_analysis_requires_review(
-    tmp_path, monkeypatch, defect
-):
+def test_old_complete_evidence_without_analysis_requires_review(tmp_path, monkeypatch):
     spec = small()
     p = fixed_programme(tmp_path / "authority", [[spec]])
     root = tmp_path / "runs"
-    if defect == "missing":
-        scheduler.run([spec], root, min_free_mib=0, log=lambda _: None)
-    else:
-        supervisor.execute(p, root)
-        receipt = root / "analysis" / "E9999.supervisor.json"
-        value = json.loads(receipt.read_text())
-        value["evidence_key"] = "0" * 64
-        receipt.write_text(json.dumps(value))
+    scheduler.run([spec], root, min_free_mib=0, log=lambda _: None)
     under_new_policy(monkeypatch)
     row = supervisor.plan(p, root)["items"][0]
     assert row["pending_shards"] == 0
-    assert row["status"] == "REQUIRES_REVIEW" and "verified analysis" in row["reason"]
+    assert row["status"] == "REQUIRES_REVIEW" and "analysis remains" in row["reason"]
     assert row["policy_state"] == "STALE_REQUIRES_REVIEW"
     result = supervisor.execute(p, root)
     assert result["actions"] == []  # no analysis is generated under NEW
-    if defect == "missing":
-        assert not (root / "analysis").exists()
+    assert not (root / "analysis").exists()
+
+
+def corrupt_fixed(root, defect):
+    run = Index(root / "index.sqlite").runs()[0]
+    directory = Path(run["run_dir"])
+    if defect == "derived":
+        (directory / "normalized/hands.jsonl").write_text("{}\n")
+    elif defect in RAW_DEFECTS:
+        raw = directory / journal.RAW_GZ
+        data = bytearray(raw.read_bytes())
+        if defect == "raw_truncated":
+            data = data[:-5]  # EOFError while decompressing
+        else:
+            data[len(data) // 2] ^= 0xFF  # corrupt the compressed stream
+        raw.chmod(0o600)
+        raw.write_bytes(bytes(data))
+        raw.chmod(0o400)
+    elif defect == "manifest":
+        manifest = directory / "manifest.json"
+        value = json.loads(manifest.read_text())
+        value["checksums"]["raw_sha256"] = "0" * 64
+        manifest.write_text(json.dumps(value))
+    elif defect == "report":
+        report = root / "analysis/E9999.json"
+        report.write_bytes(report.read_bytes() + b" ")
+    else:
+        receipt = root / "analysis/E9999.supervisor.json"
+        value = json.loads(receipt.read_text())
+        value["evidence_key"] = "0" * 64
+        receipt.write_text(json.dumps(value))
+
+
+@pytest.mark.parametrize(
+    "defect", ["derived", *RAW_DEFECTS, "manifest", "report", "receipt"]
+)
+def test_plan_never_claims_historical_for_corrupt_fixed_evidence(
+    tmp_path, monkeypatch, defect
+):
+    p = fixed_programme(tmp_path / "authority", [[small()]])
+    root = tmp_path / "runs"
+    supervisor.execute(p, root)
+    corrupt_fixed(root, defect)
+    before, rows = durable(root), index_rows(root)
+    under_new_policy(monkeypatch)
+    row = supervisor.plan(p, root)["items"][0]  # plan/status, not execute
+    assert row["status"] == "FAILED" and row["policy_state"] == "UNVERIFIED", row
+    assert row["intended_action"] == "INVESTIGATE"
+    assert durable(root) == before and index_rows(root) == rows
 
 
 def test_old_fixed_experiment_with_corrupted_evidence_still_fails(
@@ -446,6 +506,109 @@ def test_historical_campaign_satisfies_later_dependency(tmp_path, monkeypatch):
     assert changed.authority("O9997") != p.authority("O9997")
 
 
+def corrupt_campaign(c, p, path, root, defect):
+    directory = optimizer.directory(root, c)
+    if defect == "authority":
+        config = json.loads((path.parent / "O9998.json").read_text())
+        config["purpose"] = "changed after completion"
+        (path.parent / "O9998.json").write_text(json.dumps(config))
+        value = json.loads(path.read_text())
+        value["campaigns"][0]["campaign_hash"] = campaign.load(
+            path.parent / "O9998.json"
+        ).digest
+        path.write_text(json.dumps(value))
+        return programme.load(path)
+    if defect in {"derived", *RAW_DEFECTS}:
+        corrupt_fixed(root, defect)
+    elif defect == "spec":
+        file = sorted((directory / "specs").glob("*.json"))[2]
+        file.chmod(0o600)
+        file.write_bytes(file.read_bytes() + b" ")
+        file.chmod(0o400)
+    elif defect == "report":
+        report = root / "analysis/O9998.screening.00.json"
+        report.write_bytes(
+            report.read_bytes().replace(b'"label":"AB"', b'"label":"BA"')
+        )
+    else:
+        receipt = root / "analysis/O9998.screening.00.supervisor.json"
+        receipt.write_bytes(
+            receipt.read_bytes().replace(b'"binding":false', b'"binding":true')
+        )
+    return p
+
+
+@pytest.mark.parametrize(
+    "defect,expected",
+    [
+        ("derived", "FAILED"),
+        ("raw_flipped", "FAILED"),
+        ("raw_truncated", "FAILED"),
+        ("spec", "FAILED"),
+        ("report", "FAILED"),
+        ("receipt", "FAILED"),
+        ("authority", "REQUIRES_REVIEW"),
+    ],
+)
+def test_plan_never_claims_historical_for_corrupt_campaign(
+    tmp_path, monkeypatch, defect, expected
+):
+    c, p, path = screening_fixture(tmp_path / "authority")
+    root = tmp_path / "runs"
+    supervisor.execute(p, root)
+    p = corrupt_campaign(c, p, path, root, defect)
+    before, rows = durable(root), index_rows(root)
+    under_new_policy(monkeypatch)
+    row = supervisor.plan(p, root)["campaigns"][0]  # plan/status, not execute
+    assert row["status"] == expected and row["policy_state"] == "UNVERIFIED", row
+    assert durable(root) == before and index_rows(root) == rows
+
+
+def test_current_plan_does_not_deep_verify_campaign_evidence(tmp_path, monkeypatch):
+    # Deep verification is the price of a historical claim only.
+    _, p, _ = screening_fixture(tmp_path / "authority")
+    root = tmp_path / "runs"
+    supervisor.execute(p, root)
+    verify = Mock(side_effect=AssertionError("deep verification in current plan"))
+    monkeypatch.setattr(supervisor, "_verify_evidence", verify)
+    row = supervisor.plan(p, root)["campaigns"][0]
+    assert row["status"] == "COMPLETE" and row["policy_state"] == "CURRENT"
+    assert not verify.called
+
+
+def test_valid_history_is_historical_through_plan_and_status(
+    tmp_path, monkeypatch, capsys
+):
+    fixed_path = write_programme(tmp_path / "authority", [[small()]])
+    screen = screening_config(tmp_path / "authority")
+    p = with_campaigns(fixed_path, screen)
+    root = tmp_path / "runs"
+    supervisor.execute(p, root)
+    before, rows = durable(root), index_rows(root)
+    under_new_policy(monkeypatch)
+    calls = []
+    real = supervisor._verify_evidence
+
+    def counted(root, item):
+        calls.append(item.experiment_id)
+        return real(root, item)
+
+    monkeypatch.setattr(supervisor, "_verify_evidence", counted)
+    plan = supervisor.plan(p, root)
+    assert [r["policy_state"] for r in plan["items"] + plan["campaigns"]] == [
+        "HISTORICAL_COMPLETE",
+        "HISTORICAL_COMPLETE",
+    ]
+    assert {"E9999", "O9998.screening.00"} <= set(calls)  # deep-verified claims
+    for command in ("status", "plan"):
+        arguments = [command, "--programme", str(fixed_path), "--root", str(root)]
+        assert cli.main([*arguments, "--json"]) == 0
+        result = json.loads(capsys.readouterr().out)
+        printed = result["items"] + result["campaigns"]
+        assert {r["policy_state"] for r in printed} == {"HISTORICAL_COMPLETE"}
+    assert durable(root) == before and index_rows(root) == rows
+
+
 @pytest.mark.parametrize(
     "defect", ["authority", "evidence", "spec", "report", "receipt"]
 )
@@ -650,3 +813,15 @@ def test_planning_under_new_policy_is_read_only(tmp_path, monkeypatch):
     for _ in range(2):
         supervisor.plan(p, root)
     assert tree(root) == before
+
+
+@pytest.mark.parametrize("damage", ["flip", "truncate"])
+def test_unreadable_raw_evidence_is_a_failed_check_not_a_crash(tmp_path, damage):
+    p = fixed_programme(tmp_path / "authority", [[small()]])
+    root = tmp_path / "runs"
+    supervisor.execute(p, root)
+    corrupt_fixed(root, "raw_flipped" if damage == "flip" else "raw_truncated")
+    run = Index(root / "index.sqlite").runs()[0]
+    before = (Path(run["run_dir"]) / journal.RAW_GZ).read_bytes()
+    assert journal.verify(Path(run["run_dir"]))["ok"] is False
+    assert (Path(run["run_dir"]) / journal.RAW_GZ).read_bytes() == before

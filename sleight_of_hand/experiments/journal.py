@@ -26,6 +26,7 @@ import os
 import socket
 import stat
 import time
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -193,7 +194,11 @@ def verify(run_dir: Path) -> dict:
     if manifest["status"] != RunStatus.COMPLETED.value:
         return {"ok": False, "reason": f"status {manifest['status']}"}
     packed = (Path(run_dir) / RAW_GZ).read_bytes()
-    raw = gzip.decompress(packed)
+    try:
+        raw = gzip.decompress(packed)
+    except (OSError, EOFError, zlib.error):
+        # Corrupt raw evidence is a failed check, never a crash or a repair.
+        return {"ok": False, "reason": "raw evidence is not a readable gzip stream"}
     expected = manifest["checksums"]
     ok = (
         sha256(raw) == expected["raw_sha256"]

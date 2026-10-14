@@ -234,8 +234,10 @@ def plan(programme: Programme, root: Path) -> dict:
                     "another worker owns unfinished work",
                     "WAIT_FOR_USER",
                 )
-            elif stale and not pending and current:
-                # Verified complete evidence keeps its recorded attribution.
+            elif stale and not pending and _analysis_path(root, item).exists():
+                # The historical claim requires the deep read-only verification
+                # used before execution/analysis; any failure raises to FAILED.
+                _verify_historical(root, item, key)
                 epoch = HISTORICAL_COMPLETE
                 status, reason, action = (
                     "COMPLETE",
@@ -249,7 +251,7 @@ def plan(programme: Programme, root: Path) -> dict:
                 status, reason, action = (
                     "REQUIRES_REVIEW",
                     "stale policy fingerprint: "
-                    + ("execution" if pending else "verified analysis")
+                    + ("execution" if pending else "analysis")
                     + " remains for policy "
                     + ", ".join(recorded)
                     + "; it will not run under the current policy and immutable "
@@ -406,6 +408,26 @@ def _verify_evidence(root: Path, item: Item) -> None:
                 raise RuntimeError(
                     "derived evidence checksum failed; rebuild requires review"
                 )
+
+
+def _verify_historical(root: Path, item: Item, key: str) -> None:
+    """Read-only proof that complete older-policy evidence is still intact.
+
+    Deep-verifies every completed run (raw and derived checksums against the
+    index) and requires the existing receipt to bind exactly that evidence and
+    its report. Nothing is rewritten, re-analyzed or registered.
+    """
+    _verify_evidence(root, item)
+    receipt = json.loads(_analysis_path(root, item).read_text())
+    report = root / "analysis" / f"{item.experiment_id}.json"
+    if (
+        receipt.get("schema_version") != VERSION
+        or receipt.get("evidence_key") != key
+        or receipt.get("report_sha256") != sha256(report.read_bytes())
+    ):
+        raise RuntimeError(
+            "historical analysis receipt/report does not match verified evidence"
+        )
 
 
 #: Row states with no autonomous work left until something external changes.

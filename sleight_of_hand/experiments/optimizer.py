@@ -594,7 +594,15 @@ def inspect(campaign, programme, root, source, fixed):
         else authority.UNVERIFIED
     )
     try:
-        state, _ = reconstruct(campaign, programme, root, source)
+        # A historical claim needs deep verification of every materialized
+        # batch's completed evidence; current planning keeps its cheap replay.
+        state, _ = reconstruct(
+            campaign,
+            programme,
+            root,
+            source,
+            verify=recorded != source["policy_revision"],
+        )
         epoch = policy_state(campaign, source, state)
         if campaign.identifier in supervisor._past_failures(
             Path(root), programme.digest
