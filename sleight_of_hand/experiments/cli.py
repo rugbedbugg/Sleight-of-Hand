@@ -13,6 +13,9 @@ from .campaign import ReviewRequired
 from .model import Redactor
 from .runner import ROOT
 
+PROGRAMME = ROOT / "experiments" / "programme.json"
+RUNS = ROOT / "runs"
+
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
@@ -24,10 +27,8 @@ def parser() -> argparse.ArgumentParser:
         sub = commands.add_parser(command)
         if command in {"run", "analyze", "optimize"}:
             sub.add_argument("experiment", help="approved experiment or campaign ID")
-        sub.add_argument(
-            "--programme", type=Path, default=ROOT / "experiments" / "programme.json"
-        )
-        sub.add_argument("--root", type=Path, default=ROOT / "runs")
+        sub.add_argument("--programme", type=Path, default=PROGRAMME)
+        sub.add_argument("--root", type=Path, default=RUNS)
         sub.add_argument("--json", action="store_true", help="machine-readable result")
     return result
 
@@ -150,6 +151,16 @@ def main(argv=None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     args = parser().parse_args(arguments)
     try:
+        if (
+            args.command not in {"status", "plan"}
+            and args.programme.resolve() != PROGRAMME.resolve()
+            and args.root.resolve() == RUNS.resolve()
+        ):
+            # Standalone programmes keep their evidence out of the historical root.
+            raise ValueError(
+                "a programme other than experiments/programme.json needs its own "
+                "--root; the historical runs root is reserved"
+            )
         approved = programme.load(args.programme)
         if args.command in {"status", "plan"}:
             result = supervisor.plan(approved, args.root)
