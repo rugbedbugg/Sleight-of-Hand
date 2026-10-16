@@ -61,6 +61,8 @@ def test_standalone_programme_pins_exactly_two_e0006_arms():
     p = programme.load(e0006.PROGRAMME)
     assert [i.experiment_id for i in p.items] == ["E0006"] and not p.campaigns
     i = p.items[0]
+    # Prepared, not approved. A later reviewed change to LOCAL_APPROVED (which
+    # changes only the programme hash) must update this assertion with it.
     assert i.governance == "REQUIRES_REVIEW" and i.depends_on == ()
     assert {s.arm: s.spec_hash for s in i.specs} == {
         "canonical": CONTROL_HASH,
@@ -337,6 +339,88 @@ def test_contrasts_apply_the_declared_family():
     assert set(reference["strata"]) == set(e0006.REFERENCE)
 
 
+def paired(values: dict[str, list[float]]):
+    """Round-robin per-match values whose differences are exactly ``values``."""
+    left, right, m = {}, {}, 0
+    for i in range(max(len(v) for v in values.values())):
+        for opponent, diffs in values.items():
+            if i < len(diffs):
+                left[m] = {"opponent": opponent, "bb_per_100": 50.0}
+                right[m] = {"opponent": opponent, "bb_per_100": 50.0 + diffs[i]}
+                m += 1
+    return left, right, range(m)
+
+
+COHORT = e0006.EXPLOIT_SENSITIVE + e0006.REFERENCE
+VARIED = [-40.0, 10.0, 35.0, -5.0]
+
+
+def assert_degenerate(result, strata):
+    assert result["classification"] == "INCONCLUSIVE"
+    assert result["degenerate_strata"] == sorted(strata)
+    assert result["ci95"] is None
+    assert result["explanation"] == e0006.PLAN["degenerate_variance"]
+    assert result["se"] >= 0 and result["mean"] is not None
+
+
+@pytest.mark.parametrize("value", [0.0, 25.0, -25.0])
+def test_identical_differences_are_inconclusive_not_a_claim(value):
+    left, right, matches = paired(dict.fromkeys(COHORT, [value] * 4))
+    result = e0006.contrasts(left, right, matches)
+    primary = result["primary"]
+    assert primary["mean"] == pytest.approx(value) and primary["se"] == 0.0
+    assert_degenerate(primary, e0006.EXPLOIT_SENSITIVE)
+    for member in result["secondary"]["members"].values():
+        assert member["corrected"] is None and member["se"] == 0.0
+        assert_degenerate(member, member["strata"])
+    halves = e0006.stability(left, right, len(matches))
+    assert halves["first_half"]["ci95"] is None
+    assert halves["first_half"]["degenerate_strata"]
+
+
+def test_one_zero_variance_stratum_makes_its_contrasts_inconclusive():
+    values = dict.fromkeys(COHORT, VARIED)
+    values["local/script/tight-opener"] = [12.0] * 4
+    result = e0006.contrasts(*paired(values))
+    primary = result["primary"]
+    assert primary["se"] > 0  # the other strata still carry variance
+    assert_degenerate(primary, ["local/script/tight-opener"])
+    members = result["secondary"]["members"]
+    assert_degenerate(
+        members["opponent:local/script/tight-opener"], ["local/script/tight-opener"]
+    )
+    for label in ("opponent:local/script/wide-opener", "reference_equal_weight"):
+        assert members[label]["degenerate_strata"] == []
+        assert members[label]["corrected"] is not None
+        assert "explanation" not in members[label]
+
+
+def test_nondegenerate_results_are_unchanged():
+    values = {o: [v + i for v in VARIED] for i, o in enumerate(COHORT)}
+    result = e0006.contrasts(*paired(values))
+    primary = result["primary"]
+    expected = e0006.stratified(values, e0006.PLAN["primary"]["weights"])
+    assert primary["mean"] == expected["mean"] and primary["se"] == expected["se"]
+    low, high = primary["ci95"]
+    assert [low, high] == [
+        expected["mean"] - Z95 * expected["se"],
+        expected["mean"] + Z95 * expected["se"],
+    ]
+    assert primary["classification"] == e0006.classify(low, high)
+    assert primary["degenerate_strata"] == [] and "explanation" not in primary
+    z = e0006.bonferroni_z(6)
+    for member in result["secondary"]["members"].values():
+        low, high = member["corrected"]
+        assert high - low == pytest.approx(2 * z * member["se"])
+        assert member["classification"] == e0006.classify(low, high)
+
+
+def test_degenerate_rule_is_part_of_the_frozen_plan():
+    assert "zero sample variance" in e0006.PLAN["degenerate_variance"]
+    assert any("zero sample variance" in c for c in e0006.PLAN["classification"])
+    assert e0006.PLAN_HASH in DESIGN.read_text()
+
+
 def test_stability_halves_are_descriptive():
     effects = dict.fromkeys(e0006.EXPLOIT_SENSITIVE + e0006.REFERENCE, 5.0)
     left, right = synthetic(effects)
@@ -433,6 +517,68 @@ def test_tiny_evidence_analyzes_deterministically_and_read_only(evidence, tmp_pa
     data = out.read_bytes()
     e0006.write(root, second)
     assert out.read_bytes() == data == canonical(first) + b"\n"
+
+
+def outputs(root):
+    out = root / "analysis"
+    return out / "E0006.stratified.json", out / "E0006.stratified.md"
+
+
+def snapshot(paths):
+    return {p: (p.read_bytes(), p.stat().st_mtime_ns, p.stat().st_ino) for p in paths}
+
+
+def test_report_is_written_once_and_identical_rewrites_change_nothing(
+    evidence, tmp_path
+):
+    path, root = clone(evidence, tmp_path)
+    index = (root / "index.sqlite").read_bytes()
+    report = e0006.analyze(root, path)
+    assert e0006.write(root, report) == outputs(root)[0]
+    for file in outputs(root):
+        assert not file.stat().st_mode & 0o222  # published read-only
+    before = snapshot(outputs(root))
+    assert e0006.write(root, e0006.analyze(root, path)) == outputs(root)[0]
+    assert e0006.main(["--root", str(root), "--programme", str(path)]) == 0
+    assert snapshot(outputs(root)) == before
+    assert (root / "index.sqlite").read_bytes() == index
+    assert sorted(p.name for p in (root / "analysis").iterdir()) == [
+        "E0006.stratified.json",
+        "E0006.stratified.md",
+    ]
+
+
+def test_a_differing_report_is_never_replaced(evidence, tmp_path, capsys):
+    path, root = clone(evidence, tmp_path)
+    report = e0006.analyze(root, path)
+    e0006.write(root, report)
+    before = snapshot(outputs(root))
+    changed = {**report, "note": "a different result"}
+    with pytest.raises(e0006.ReportConflict, match="differs"):
+        e0006.write(root, changed)
+    assert snapshot(outputs(root)) == before
+    # A tampered published file is a conflict too, through the CLI as well.
+    json_path = outputs(root)[0]
+    json_path.chmod(0o644)
+    json_path.write_bytes(json_path.read_bytes().replace(b"Research", b"research"))
+    tampered = snapshot(outputs(root))
+    assert e0006.main(["--root", str(root), "--programme", str(path)]) == 1
+    assert "ReportConflict" in capsys.readouterr().err
+    assert snapshot(outputs(root)) == tampered
+
+
+@pytest.mark.parametrize("missing", [0, 1])
+def test_a_partial_report_pair_fails_closed(evidence, tmp_path, missing):
+    path, root = clone(evidence, tmp_path)
+    report = e0006.analyze(root, path)
+    e0006.write(root, report)
+    outputs(root)[missing].unlink()
+    survivor = outputs(root)[1 - missing]
+    before = snapshot([survivor])
+    with pytest.raises(e0006.ReportConflict, match="partial"):
+        e0006.write(root, report)
+    assert snapshot([survivor]) == before
+    assert not outputs(root)[missing].exists()
 
 
 def test_missing_match_block_fails(evidence, tmp_path):

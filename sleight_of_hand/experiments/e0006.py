@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -94,7 +95,17 @@ PLAN = {
             " not proven equivalence"
         ),
         "INCONCLUSIVE: interval contains 0 and extends beyond the resolution",
+        (
+            "INCONCLUSIVE: any weighted stratum has zero sample variance"
+            " (degenerate; no interval)"
+        ),
     ],
+    "degenerate_variance": (
+        "a weighted stratum whose paired differences are all identical has zero"
+        " sample variance, so its uncertainty cannot be estimated: the contrast"
+        " reports estimate, SE and the affected strata with no interval and is"
+        " INCONCLUSIVE, never an improvement or regression"
+    ),
     "reference_regression": "REGRESSION_DETECTED on the corrected interval only;"
     " no non-inferiority margin is claimed",
     "descriptive": [
@@ -341,7 +352,7 @@ def stratified(diffs: dict[str, list[float]], weights: dict[str, float]) -> dict
     if any(len(diffs[o]) < 2 for o in weights):
         raise EvidenceError("each weighted opponent needs at least two matches")
     mean = variance = 0.0
-    strata = {}
+    strata, degenerate = {}, []
     for opponent, weight in sorted(weights.items()):
         values = diffs[opponent]
         n = len(values)
@@ -350,8 +361,11 @@ def stratified(diffs: dict[str, list[float]], weights: dict[str, float]) -> dict
         mean += weight * m
         variance += weight**2 * var / n
         strata[opponent] = {"weight": weight, "matches": n, "mean": m}
+        # Exact identity, not a variance threshold: rounding cannot hide it.
+        if len(set(values)) == 1:
+            degenerate.append(opponent)
     se = math.sqrt(variance)
-    return {"mean": mean, "se": se, "strata": strata}
+    return {"mean": mean, "se": se, "strata": strata, "degenerate_strata": degenerate}
 
 
 def _interval(estimate: dict, z: float) -> list[float]:
@@ -361,6 +375,29 @@ def _interval(estimate: dict, z: float) -> list[float]:
     ]
 
 
+def _judge(estimate: dict, corrected_z: float | None = None) -> dict:
+    """Intervals and classification; degenerate variance is never a claim.
+
+    The primary is classified on its 95% interval, a secondary member on its
+    Bonferroni ``corrected`` interval. A zero-variance weighted stratum makes
+    the standard error meaningless, so no interval is reported and the
+    result is INCONCLUSIVE with the affected strata named.
+    """
+    keys = ["ci95"] + ([] if corrected_z is None else ["corrected"])
+    if estimate["degenerate_strata"]:
+        estimate.update(dict.fromkeys(keys))
+        estimate.update(
+            classification="INCONCLUSIVE",
+            explanation=PLAN["degenerate_variance"],
+        )
+        return estimate
+    estimate["ci95"] = _interval(estimate, Z95)
+    if corrected_z is not None:
+        estimate["corrected"] = _interval(estimate, corrected_z)
+    estimate["classification"] = classify(*estimate[keys[-1]])
+    return estimate
+
+
 def contrasts(left: dict, right: dict, matches) -> dict:
     """Primary, secondary family and stability from paired per-match values."""
     diffs = defaultdict(list)
@@ -368,9 +405,7 @@ def contrasts(left: dict, right: dict, matches) -> dict:
         diffs[left[index]["opponent"]].append(
             right[index]["bb_per_100"] - left[index]["bb_per_100"]
         )
-    primary = stratified(diffs, PLAN["primary"]["weights"])
-    ci = _interval(primary, Z95)
-    primary.update(ci95=ci, classification=classify(*ci))
+    primary = _judge(stratified(diffs, PLAN["primary"]["weights"]))
     z = bonferroni_z(len(SECONDARY))
     members = {}
     for label in SECONDARY:
@@ -378,14 +413,7 @@ def contrasts(left: dict, right: dict, matches) -> dict:
             weights = PLAN["secondary"]["reference_weights"]
         else:
             weights = {label.split(":", 1)[1]: 1.0}
-        estimate = stratified(diffs, weights)
-        corrected = _interval(estimate, z)
-        estimate.update(
-            ci95=_interval(estimate, Z95),
-            corrected=corrected,
-            classification=classify(*corrected),
-        )
-        members[label] = estimate
+        members[label] = _judge(stratified(diffs, weights), z)
     return {
         "primary": primary,
         "secondary": {
@@ -407,7 +435,7 @@ def stability(left: dict, right: dict, total: int) -> dict:
     out = {}
     for name, block in halves.items():
         result = contrasts(left, right, block)["primary"]
-        out[name] = {k: result[k] for k in ("mean", "se", "ci95")}
+        out[name] = {k: result[k] for k in ("mean", "se", "ci95", "degenerate_strata")}
     out["same_sign"] = len({math.copysign(1, v["mean"]) for v in out.values()}) == 1
     out["binding"] = False
     return out
@@ -569,9 +597,15 @@ def analyze(root: Path, programme_path: Path = PROGRAMME) -> dict:
 
 def markdown(report: dict) -> str:
     def row(label, value, interval_key):
-        low, high = value[interval_key]
+        if value[interval_key] is None:
+            interval = (
+                "n/a (zero variance: " + ", ".join(value["degenerate_strata"]) + ")"
+            )
+        else:
+            low, high = value[interval_key]
+            interval = f"[{low:+.2f}, {high:+.2f}]"
         return (
-            f"| {label} | {value['mean']:+.2f} | [{low:+.2f}, {high:+.2f}] | "
+            f"| {label} | {value['mean']:+.2f} | {interval} | "
             f"{value['classification']} |"
         )
 
@@ -612,16 +646,52 @@ def markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
+class ReportConflict(EvidenceError):
+    """An E0006 report differs from, or only partly matches, what exists."""
+
+
+def _create_once(path: Path, data: bytes) -> None:
+    """Publish ``data`` read-only at ``path``; never replace an existing file."""
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with open(temporary, "xb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    try:
+        os.chmod(temporary, 0o444)
+        os.link(temporary, path)  # atomic, and fails if the path exists
+    finally:
+        temporary.unlink()
+
+
 def write(root: Path, report: dict) -> Path:
+    """Write the final report once; an identical rewrite changes nothing.
+
+    A differing existing report, or a pair with only one file present, is
+    rejected for review: an earlier research result is never replaced.
+    """
     out = Path(root) / "analysis"
+    path = out / f"{EXPERIMENT}.stratified.json"
+    outputs = {
+        path: canonical(report) + b"\n",
+        out / f"{EXPERIMENT}.stratified.md": (markdown(report) + "\n").encode(),
+    }
+    present = [p for p in outputs if p.exists()]
+    if present:
+        if len(present) != len(outputs):
+            raise ReportConflict("partial E0006 report pair; review required")
+        if any(p.read_bytes() != data for p, data in outputs.items()):
+            raise ReportConflict("an existing E0006 report differs; never replaced")
+        return path
     out.mkdir(parents=True, exist_ok=True)
-    journal.atomic_write(
-        out / f"{EXPERIMENT}.stratified.json", canonical(report) + b"\n"
-    )
-    journal.atomic_write(
-        out / f"{EXPERIMENT}.stratified.md", (markdown(report) + "\n").encode()
-    )
-    return out / f"{EXPERIMENT}.stratified.json"
+    for target, data in outputs.items():
+        try:
+            _create_once(target, data)
+        except FileExistsError as exc:
+            raise ReportConflict(
+                "concurrent E0006 report write; review required"
+            ) from exc
+    return path
 
 
 def main(argv=None) -> int:
@@ -635,10 +705,10 @@ def main(argv=None) -> int:
         return 1
     try:
         report = analyze(args.root, args.programme)
+        write(args.root, report)
     except (EvidenceError, OSError, ValueError, RuntimeError) as exc:
         print(f"e0006: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
-    write(args.root, report)
     print(json.dumps(report, indent=2) if args.json else markdown(report))
     return 0
 
