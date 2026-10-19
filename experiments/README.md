@@ -350,7 +350,7 @@ Local opponents: `script/calling_station`, `script/random_legal`,
 | E0003 | canonical, aggression-0.6, call-threshold-0.45, bluff-0.05 | local / LOCAL_SELFPLAY | Offline sweep of the existing `PolicyParams` surface |
 | E0004 | no-prior, e0002-prior | local / SYNTHETIC | Historical-prior machinery: predictive value of a compiled prior, with identical decisions. The bundle lives in `runs/priors/` (not committed); `build_local_prior.py` rebuilds it byte-identically from E0002's runs, and the spec pins its hash |
 | E0005 | committed, contestable, capped-bets | local / SCRIPTED_PROBE | Rehearsal of the E0001 probe pipeline under each dealer convention |
-| E0006 | canonical, safe-exploit-v1 | local / LOCAL_SELFPLAY | Standalone programme [`safe-exploit-v1/`](safe-exploit-v1/DESIGN.md): prepared, not run (`REQUIRES_REVIEW`). A frozen ablation of SafeExploitController v1 against exploit-sensitive and reference opponents, analysed by `sleight_of_hand/experiments/e0006.py` |
+| E0006 | canonical, safe-exploit-v1 | local / LOCAL_SELFPLAY | Standalone programme [`safe-exploit-v1/`](safe-exploit-v1/DESIGN.md): `LOCAL_APPROVED` for one frozen ablation, with evidence isolated in `runs-safe-exploit-v1/`. Compares SafeExploitController v1 against exploit-sensitive and reference opponents, analysed by `sleight_of_hand/experiments/e0006.py` |
 
 ### E0001 on Chipzen
 

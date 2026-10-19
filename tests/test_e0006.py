@@ -61,9 +61,8 @@ def test_standalone_programme_pins_exactly_two_e0006_arms():
     p = programme.load(e0006.PROGRAMME)
     assert [i.experiment_id for i in p.items] == ["E0006"] and not p.campaigns
     i = p.items[0]
-    # Prepared, not approved. A later reviewed change to LOCAL_APPROVED (which
-    # changes only the programme hash) must update this assertion with it.
-    assert i.governance == "REQUIRES_REVIEW" and i.depends_on == ()
+    # Approved for the frozen local ablation only; both arm hashes stay pinned.
+    assert i.governance == "LOCAL_APPROVED" and i.depends_on == ()
     assert {s.arm: s.spec_hash for s in i.specs} == {
         "canonical": CONTROL_HASH,
         "safe-exploit-v1": TREATMENT_HASH,
@@ -173,13 +172,15 @@ def test_historical_authority_is_unchanged_and_isolated():
     )
 
 
-def test_standalone_plan_is_read_only_and_independent_of_e0001(tmp_path):
+def test_standalone_plan_is_read_only_and_independent_of_e0001(tmp_path, monkeypatch):
+    monkeypatch.setattr(scheduler, "available_mib", lambda: 2048)
     root = tmp_path / "runs-e0006"
     result = supervisor.plan(programme.load(e0006.PROGRAMME), root)
     assert [r["experiment"] for r in result["items"]] == ["E0006"]
     assert result["campaigns"] == []
     row = result["items"][0]
-    assert row["status"] == "REQUIRES_REVIEW" and row["intended_action"] == "REVIEW"
+    assert row["governance"] == "LOCAL_APPROVED"
+    assert row["status"] == "PENDING" and row["intended_action"] == "RUN"
     assert row["policy_state"] == "CURRENT" and row["pending_shards"] == 60
     assert not root.exists()
 
