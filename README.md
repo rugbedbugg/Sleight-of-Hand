@@ -1,5 +1,7 @@
 # Sleight-of-Hand
 
+[CI](https://github.com/rugbedbugg/Sleight-of-Hand/actions/workflows/ci.yml)
+
 **Calling the Bluff: An AI That Learns to Play Poker Without the Tells**
 
 A heads-up Leduc hold'em agent built on Bayesian opponent modeling,
@@ -94,6 +96,12 @@ the normal workflow; `uv run --no-project` is no longer needed. The
 commands below assume `uv run` or an activated `.venv`.
 
 ## Approved research
+
+The separate [solver-guided M1 lab](sleight_of_hand/solver_lab/README.md)
+generates small, pinned river CFR+ teacher datasets and exposes an exact
+research lookup adapter. It does not train or change the competition policy.
+Its [engineering report](sleight_of_hand/solver_lab/REPORT.md) records the
+supported abstraction, independent checks, limitations and reproduction commands.
 
 ```bash
 uv run research status

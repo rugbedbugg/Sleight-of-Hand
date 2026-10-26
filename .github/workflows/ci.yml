@@ -80,6 +80,20 @@ jobs:
           uv run --locked --python "$PWD/.venv/bin/python" research status --json
           uv run --locked --python "$PWD/.venv/bin/python" research plan --json
 
+      - name: Validate the isolated solver lab
+        run: |
+          ruff check --isolated sleight_of_hand/solver_lab tests/test_solver_lab.py
+          ruff format --isolated --check sleight_of_hand/solver_lab tests/test_solver_lab.py
+          python -m sleight_of_hand.solver_lab validate sleight_of_hand/solver_lab/data/dataset.json
+
+      - name: Fetch the pinned research teacher
+        run: |
+          git init "$RUNNER_TEMP/soh-m1-teacher"
+          git -C "$RUNNER_TEMP/soh-m1-teacher" remote add origin https://github.com/noambrown/poker_solver.git
+          git -C "$RUNNER_TEMP/soh-m1-teacher" fetch --depth 1 origin 6a10442877ffc8fd28af93e16e279b9bbdd97b2a
+          git -C "$RUNNER_TEMP/soh-m1-teacher" checkout --detach FETCH_HEAD
+          echo "SOH_SOLVER_SOURCE=$RUNNER_TEMP/soh-m1-teacher" >> "$GITHUB_ENV"
+
       - name: Run tests
         run: python -m pytest tests/ -q
 

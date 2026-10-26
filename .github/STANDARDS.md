@@ -21,6 +21,11 @@ The staged runtime is checked by the SDK's protocol-conformance harness.
 
 There is no CD workflow. Container build/export remains a local operation;
 the SDK source checks do not certify an image's size or production review.
-No release or CI-status badges are invented: GitHub publication could not
-be verified with the available connection during this port. This document
-records the scoped CI changes, not a completed repository-wide audit.
+GitHub publication was verified for the solver-guided M1 work. The README
+links the existing CI workflow; there is no release workflow to advertise.
+M1 adds isolated solver lint, dataset validation, and actual deterministic
+reproduction on both matrix interpreters from an exact external revision in
+the runner's temporary directory. No teacher or OpenSpiel dependency is added
+to the project environment or staged Chipzen runtime. The optional OpenSpiel
+oracle is reproduced separately from its hash-locked research requirements.
+This records scoped checks, not a repository-wide standards rollout.
