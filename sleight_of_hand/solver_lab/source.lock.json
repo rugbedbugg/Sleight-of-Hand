@@ -1,0 +1,27 @@
+{
+  "url": "https://github.com/noambrown/poker_solver",
+  "revision": "6a10442877ffc8fd28af93e16e279b9bbdd97b2a",
+  "license": "MIT",
+  "files": {
+    "python/src/algorithms/__init__.py": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "python/src/algorithms/cfr.py": "sha256:6b853b0f4d059102ace72fe0411a482df0bee6a464762e51cc0bd064c8abc0e3",
+    "python/src/algorithms/evaluation.py": "sha256:f93dc31d1c8eb6eb2342099a74a1ddda8bbf692d6d140a0b60ee8e36f1b1e74b",
+    "python/src/algorithms/fictitious_play.py": "sha256:dfdaaed0ef4e30e8a896e609123343f886afb5e22eb764bb8a60f5f87e8941b5",
+    "python/src/algorithms/infoset.py": "sha256:1ca5146d767d5a9aeaed57b12d84b5240361a7651f1db06b7ef655d52034570c",
+    "python/src/algorithms/mccfr.py": "sha256:8ed7c7acc46bd9740b18a690654531404b628a83b4e89d1c8a272efc46140926",
+    "python/src/algorithms/naive_eval.py": "sha256:4bea3896ae9899bb2124284be1f53ded4fc78679c3007c6736b9001489c3f140",
+    "python/src/algorithms/river_mccfr.py": "sha256:06c3f7089a4798badcfaf1f0aa1993d4d742f569dd8fee6342a4cb7717f2e280",
+    "python/src/algorithms/vector_cfr.py": "sha256:36a5eb74a4c42edbd77c88105d9238e5e6d6419d54202d4be7feecf576052372",
+    "python/src/algorithms/vector_eval.py": "sha256:548b3427d217debcc07fa9a3c3d9b9d48d65b804ec41ad89ab6ea41367b15498",
+    "python/src/algorithms/vector_fp.py": "sha256:84b5e4e558a15115035436a7a2da97e84d6dc32ef2c71a36a2140d1bf172192c",
+    "python/src/cli/__init__.py": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "python/src/cli/run_exploitability.py": "sha256:15cf98778ddd80a33aa9f70f600d352402078b0f962041808a78ffc5efdd5d96",
+    "python/src/cli/run_river_exploitability.py": "sha256:27c8b0424e16221889622520febff6b72eba6967a271a781098b9c426d12d515",
+    "python/src/cli/subgame_gui.py": "sha256:9d9b7dd3996e4be253e3fba36bb7c8294f71a4bc0a812791b1b1f834189ac778",
+    "python/src/games/__init__.py": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "python/src/games/kuhn.py": "sha256:ce740f4141f8b22ac80ef9647c0613348c884db231c2a429d2add933b74dbc9b",
+    "python/src/games/leduc.py": "sha256:fa568998dfbaebd2e7c8de1d3eaa467c4dab47193474a5a74558ecdf32575ba6",
+    "python/src/games/river_holdem.py": "sha256:b690c5f7b2d40ecda33a874cdbfb170be5c9d90474fa0271444529de5b3b4494",
+    "LICENSE": "sha256:8500c2d5baf92f86df07dbb51e4912f400afb7bed22c87795a57fa36478c9db6"
+  }
+}

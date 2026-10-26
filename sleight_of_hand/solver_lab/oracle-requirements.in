@@ -1,0 +1,8 @@
+# Optional independent oracle; never installed in SOH's project environment.
+absl-py==2.5.1
+attrs==26.1.0
+ml-collections==1.1.0
+numpy==2.5.4
+open-spiel==1.6.15
+pyyaml==6.0.3
+scipy==1.18.1

@@ -1,0 +1,371 @@
+{
+  "schema_version": 1,
+  "source": {
+    "url": "https://github.com/noambrown/poker_solver",
+    "revision": "6a10442877ffc8fd28af93e16e279b9bbdd97b2a",
+    "license": "MIT"
+  },
+  "algorithm": "vector_cfr_plus_alternating_linear_naive",
+  "checkpoints": [
+    100,
+    500,
+    2000
+  ],
+  "limits": {
+    "address_space_mb": 512,
+    "cpu_seconds": 120,
+    "wall_seconds": 180,
+    "cpus": 2,
+    "max_exploitability_pot_fraction": 0.001
+  },
+  "games": [
+    {
+      "id": "river-train-dry",
+      "split": "train",
+      "variant": "nlhe_hu_river",
+      "board": [
+        "Ks",
+        "Th",
+        "7s",
+        "4d",
+        "2s"
+      ],
+      "pot": 100,
+      "stacks": [
+        100,
+        100
+      ],
+      "big_blind": 2,
+      "ranges": [
+        [
+          {
+            "cards": [
+              "Ah",
+              "As"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "Kd",
+              "Kh"
+            ],
+            "weight": 0.75
+          },
+          {
+            "cards": [
+              "Js",
+              "Qs"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "8h",
+              "9h"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "7c",
+              "7d"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "Qd",
+              "Ac"
+            ],
+            "weight": 0.25
+          }
+        ],
+        [
+          {
+            "cards": [
+              "Qh",
+              "As"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "Qd",
+              "Kc"
+            ],
+            "weight": 0.75
+          },
+          {
+            "cards": [
+              "Tc",
+              "Td"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "Js",
+              "Qs"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "8c",
+              "9c"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "Ad",
+              "Ah"
+            ],
+            "weight": 0.25
+          }
+        ]
+      ],
+      "betting": {
+        "bet_fractions": [
+          0.5,
+          1.0
+        ],
+        "include_all_in": true,
+        "max_wagers": 2
+      }
+    },
+    {
+      "id": "river-validation-paired",
+      "split": "validation",
+      "variant": "nlhe_hu_river",
+      "board": [
+        "Qc",
+        "Qh",
+        "8d",
+        "5s",
+        "2c"
+      ],
+      "pot": 100,
+      "stacks": [
+        100,
+        100
+      ],
+      "big_blind": 2,
+      "ranges": [
+        [
+          {
+            "cards": [
+              "Qs",
+              "Ac"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "8c",
+              "8h"
+            ],
+            "weight": 0.75
+          },
+          {
+            "cards": [
+              "Kh",
+              "As"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "Tc",
+              "Jc"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "5c",
+              "5d"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "Kd",
+              "Ad"
+            ],
+            "weight": 0.25
+          }
+        ],
+        [
+          {
+            "cards": [
+              "Qd",
+              "Kc"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "8h",
+              "8s"
+            ],
+            "weight": 0.75
+          },
+          {
+            "cards": [
+              "Ks",
+              "Ah"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "Td",
+              "Jd"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "Ac",
+              "Ad"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "5c",
+              "5h"
+            ],
+            "weight": 0.25
+          }
+        ]
+      ],
+      "betting": {
+        "bet_fractions": [
+          0.5,
+          1.0
+        ],
+        "include_all_in": true,
+        "max_wagers": 2
+      }
+    },
+    {
+      "id": "river-test-connected",
+      "split": "test",
+      "variant": "nlhe_hu_river",
+      "board": [
+        "Js",
+        "Td",
+        "9c",
+        "6h",
+        "3s"
+      ],
+      "pot": 100,
+      "stacks": [
+        100,
+        100
+      ],
+      "big_blind": 2,
+      "ranges": [
+        [
+          {
+            "cards": [
+              "Qs",
+              "Kd"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "7c",
+              "8c"
+            ],
+            "weight": 0.75
+          },
+          {
+            "cards": [
+              "Jd",
+              "Jh"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "Ah",
+              "As"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "8h",
+              "Qc"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "5c",
+              "Ac"
+            ],
+            "weight": 0.25
+          }
+        ],
+        [
+          {
+            "cards": [
+              "Qh",
+              "Kc"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "7d",
+              "8d"
+            ],
+            "weight": 0.75
+          },
+          {
+            "cards": [
+              "Tc",
+              "Th"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "Ad",
+              "Ah"
+            ],
+            "weight": 1
+          },
+          {
+            "cards": [
+              "8s",
+              "Qd"
+            ],
+            "weight": 0.5
+          },
+          {
+            "cards": [
+              "5h",
+              "Kh"
+            ],
+            "weight": 0.25
+          }
+        ]
+      ],
+      "betting": {
+        "bet_fractions": [
+          0.5,
+          1.0
+        ],
+        "include_all_in": true,
+        "max_wagers": 2
+      }
+    }
+  ]
+}
